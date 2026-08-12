@@ -99,8 +99,8 @@ begin
   Result.CrossLinux32 := StrToBoolDefSafe(Lines.Values['cross-i386-linux'], False);
   // accept legacy 'cross-wasm32-wasi' key so historical flag survives
   Result.CrossWasm    := StrToBoolDefSafe(Lines.Values['cross-wasm32-wasip1'], StrToBoolDefSafe(Lines.Values['cross-wasm32-wasi'], False));
-  Result.InstallMinimap := StrToBoolDefSafe(Lines.Values['extras-minimap'], False);
-  Result.InstallCPUView := StrToBoolDefSafe(Lines.Values['extras-cpuview'], False);
+  Result.InstallMinimap        := StrToBoolDefSafe(Lines.Values['extras-minimap'], False);
+  Result.InstallCPUView        := StrToBoolDefSafe(Lines.Values['extras-cpuview'], False);
   Result.InstallToggleAffinity := StrToBoolDefSafe(Lines.Values['extras-toggle-affinity'], False);
   Result.InstallMetaDarkStyle  := StrToBoolDefSafe(Lines.Values['extras-metadarkstyle'], False);
   Result.InstallHelpFiles      := StrToBoolDefSafe(Lines.Values['help-chm'], False);

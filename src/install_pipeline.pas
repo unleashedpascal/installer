@@ -57,7 +57,7 @@ type
     InstallHelpFiles: Boolean;
     // user-side preference; pipeline only persists it to manifest so
     // the next install run can restore the checkbox state.
-    LaunchAfter:    Boolean;
+    LaunchAfter: Boolean;
     // IDE launch shortcuts. UI requires at least one when InstallLazarus
     // is on -- the shortcut carries --pcp, the only correct way to start
     // the IDE (raw binary spills config + breaks the docked layout).
@@ -1282,7 +1282,7 @@ begin
     Exit;
   end;
 
-  var Tag   := '# unleashed-pascal-cross ' + TargetCpu + '-' + TargetOs;
+  var Tag := '# unleashed-pascal-cross ' + TargetCpu + '-' + TargetOs;
   // tag written by pre-rename installer versions; still stripped so
   // updating an old install does not accumulate duplicate sections
   var OldTag := '# fpc-unleashed-cross ' + TargetCpu + '-' + TargetOs;
@@ -1756,7 +1756,7 @@ end;
 function TInstallThread.StepRemoveCrossLinux32FromLinux: Boolean;
 begin
   Result := True;  // best-effort
-  var UnitsDir   := HostFpcUnitsDir + 'i386-linux';
+  var UnitsDir := HostFpcUnitsDir + 'i386-linux';
 
   Log('Removing cross compiler i386-linux');
   Progress(-1, 'Removing i386-linux');
@@ -2485,7 +2485,7 @@ procedure TInstallThread.UnregisterIdePackage(const PkgName: string);
     if Found < 1 then Exit;
     // shift remaining items down by one
     for var i := Found to Cnt - 1 do
-      Cfg.SetValue(KeyStart + 'Item' + IntToStr(i)   + '/' + ValuePath, Cfg.GetValue(KeyStart + 'Item' + IntToStr(i+1) + '/' + ValuePath, EmptyStr));
+      Cfg.SetValue(KeyStart + 'Item' + IntToStr(i) + '/' + ValuePath, Cfg.GetValue(KeyStart + 'Item' + IntToStr(i+1) + '/' + ValuePath, EmptyStr));
     Cfg.DeletePath(KeyStart + 'Item' + IntToStr(Cnt));
     Cfg.SetValue(KeyStart + 'Count', Cnt - 1);
     Cfg.Flush;
@@ -3150,8 +3150,8 @@ begin
     begin
       // bootstrap is needed for any make-based build below; only run if
       // we will actually need it (FPC build or cross compiler add)
-      if (not hasFpcExe) or (FCfg.CrossWin32     and not hasCrossW32) or (FCfg.CrossWasm      and not hasCrossWasm) or (FCfg.CrossLinux64   and not hasCrossLinux64) or
-         (FCfg.CrossLinux32   and not hasCrossLinux32) or (FCfg.CrossWin64     and not hasCrossWin64) then
+      if (not hasFpcExe) or (FCfg.CrossWin32 and not hasCrossW32) or (FCfg.CrossWasm and not hasCrossWasm) or (FCfg.CrossLinux64 and not hasCrossLinux64) or
+         (FCfg.CrossLinux32 and not hasCrossLinux32) or (FCfg.CrossWin64 and not hasCrossWin64) then
         if not StepBootstrap then Exit;
     end;
 
