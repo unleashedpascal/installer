@@ -30,6 +30,7 @@ type
     checkboxcrosswin32: tcheckbox;
     checkboxcrosswin64: tcheckbox;
     checkboxminimap: tcheckbox;
+    CheckBoxUnleashedMinimap: TCheckBox;
     checkboxtoggleaffinity: tcheckbox;
     CheckBoxHelpFiles: TCheckBox;
     CheckBoxMetaDarkStyle: TCheckBox;
@@ -467,13 +468,14 @@ begin
   st.CrossLinux64 := CheckBoxCrossLinux64.Checked;
   st.CrossLinux32 := CheckBoxCrossLinux32.Checked;
   st.CrossWasm    := CheckBoxCrossWasm.Checked;
-  st.InstallMinimap        := CheckBoxMinimap.Checked;
-  st.InstallCPUView        := CheckBoxCPUView.Checked;
-  st.InstallToggleAffinity := CheckBoxToggleAffinity.Checked;
-  st.InstallMetaDarkStyle  := CheckBoxMetaDarkStyle.Checked;
-  st.InstallHelpFiles      := CheckBoxHelpFiles.Checked;
-  st.MakeDesktopShortcut   := CheckBoxDesktopShortcut.Checked;
-  st.MakeFolderShortcut    := CheckBoxInstallFolderShortcut.Checked;
+  st.InstallMinimap          := CheckBoxMinimap.Checked;
+  st.InstallUnleashedMinimap := CheckBoxUnleashedMinimap.Checked;
+  st.InstallCPUView          := CheckBoxCPUView.Checked;
+  st.InstallToggleAffinity   := CheckBoxToggleAffinity.Checked;
+  st.InstallMetaDarkStyle    := CheckBoxMetaDarkStyle.Checked;
+  st.InstallHelpFiles        := CheckBoxHelpFiles.Checked;
+  st.MakeDesktopShortcut     := CheckBoxDesktopShortcut.Checked;
+  st.MakeFolderShortcut      := CheckBoxInstallFolderShortcut.Checked;
   st.LaunchAfter := CheckBoxLaunchAfter.Checked;
   st.SaveLog     := CheckBoxSaveLog.Checked;
   st.InstallFpc       := CheckBoxInstallUnleashed.Checked;
@@ -713,11 +715,12 @@ begin
     CheckBoxCrossWasm.Checked    := ProbeCrossInstalled(rawDir, 'wasm32-wasip1');
     // restore non-FS-detectable selections (branch/hash/addons/launch-after) from manifest
     if m.Present then begin
-      CheckBoxMinimap.Checked      := m.InstallMinimap;
-      CheckBoxCPUView.Checked      := m.InstallCPUView;
-      CheckBoxMetaDarkStyle.Checked := m.InstallMetaDarkStyle;
+      CheckBoxMinimap.Checked          := m.InstallMinimap;
+      CheckBoxUnleashedMinimap.Checked := m.InstallUnleashedMinimap;
+      CheckBoxCPUView.Checked          := m.InstallCPUView;
+      CheckBoxMetaDarkStyle.Checked    := m.InstallMetaDarkStyle;
       // help stays ticked once installed; unticking never removes the files, it just skips the fetch
-      CheckBoxHelpFiles.Checked    := m.InstallHelpFiles;
+      CheckBoxHelpFiles.Checked        := m.InstallHelpFiles;
       // skip windows-only checkbox restore on linux (FormCreate locked Enabled=False)
       if CheckBoxToggleAffinity.Enabled then CheckBoxToggleAffinity.Checked := m.InstallToggleAffinity;
       CheckBoxLaunchAfter.Checked  := m.LaunchAfter;
@@ -744,6 +747,7 @@ begin
     if hasLaz and (selLaz <> '') and (m.LazSha <> '') and (Pos(selLaz, m.LazSha) <> 1) and (Pos(m.LazSha, selLaz) <> 1) then updates := updates+' lazarus '+Copy(m.LazSha, 1, 7)+' -> '+Copy(selLaz, 1, 7);
     // addon deltas. Pipeline's StepRebuildLazarusForAddons handles them without full reinstall, but labels need to reflect reality
     if hasLaz and (CheckBoxMinimap.Checked <> m.InstallMinimap) then updates := updates+(if CheckBoxMinimap.Checked then ' +minimap' else ' -minimap');
+    if hasLaz and (CheckBoxUnleashedMinimap.Checked <> m.InstallUnleashedMinimap) then updates := updates+(if CheckBoxUnleashedMinimap.Checked then ' +unleashed-minimap' else ' -unleashed-minimap');
     if hasLaz and (CheckBoxCPUView.Checked <> m.InstallCPUView) then updates := updates+(if CheckBoxCPUView.Checked then ' +cpuview' else ' -cpuview');
     if hasLaz and (CheckBoxMetaDarkStyle.Checked <> m.InstallMetaDarkStyle) then updates := updates+(if CheckBoxMetaDarkStyle.Checked then ' +metadarkstyle' else ' -metadarkstyle');
     // help files are add-only: nothing gets deleted when the box goes off, so only the +delta is real
@@ -783,7 +787,7 @@ begin
   // settings file fall back to the LFM first-time values
   var d := FStoredDefaults;
   if not d.Present then begin
-    d.InstallMinimap := True;
+    d.InstallUnleashedMinimap := True;
     d.InstallCPUView := True;
     d.InstallHelpFiles := True;
     d.InstallFpc := True;
@@ -802,12 +806,13 @@ begin
   CheckBoxCrossLinux32.Checked := d.CrossLinux32;
   CheckBoxCrossWasm.Checked    := d.CrossWasm;
 
-  CheckBoxMinimap.Checked        := d.InstallMinimap;
-  CheckBoxCPUView.Checked        := d.InstallCPUView;
-  CheckBoxMetaDarkStyle.Checked  := d.InstallMetaDarkStyle;
-  CheckBoxHelpFiles.Checked      := d.InstallHelpFiles;
+  CheckBoxMinimap.Checked          := d.InstallMinimap;
+  CheckBoxUnleashedMinimap.Checked := d.InstallUnleashedMinimap;
+  CheckBoxCPUView.Checked          := d.InstallCPUView;
+  CheckBoxMetaDarkStyle.Checked    := d.InstallMetaDarkStyle;
+  CheckBoxHelpFiles.Checked        := d.InstallHelpFiles;
   // toggle-affinity .Enabled=False on linux; writing False here is a no-op visually and keeps the data model clean
-  CheckBoxToggleAffinity.Checked := d.InstallToggleAffinity and CheckBoxToggleAffinity.Enabled;
+  CheckBoxToggleAffinity.Checked   := d.InstallToggleAffinity and CheckBoxToggleAffinity.Enabled;
 
   CheckBoxInstallUnleashed.Checked := d.InstallFpc;
   CheckBoxInstallLazarus.Checked   := d.InstallLazarus;
@@ -1102,6 +1107,7 @@ begin
   EditLazarusHash.Enabled := act and (not CheckBoxLazarusLatest.Checked);
   // addons nested under IDE
   CheckBoxMinimap.Enabled := act;
+  CheckBoxUnleashedMinimap.Enabled := act;
   CheckBoxCPUView.Enabled := act;
   CheckBoxMetaDarkStyle.Enabled := act;
   CheckBoxHelpFiles.Enabled := act;
@@ -1464,12 +1470,13 @@ begin
   cfg.CrossLinux32   := CheckBoxCrossLinux32.Checked and cfg.InstallFpc;
   cfg.CrossWasm      := CheckBoxCrossWasm.Checked    and cfg.InstallFpc;
   // addons meaningless w/o IDE (lazbuild needs IDE)
-  cfg.InstallMinimap       := CheckBoxMinimap.Checked       and cfg.InstallLazarus;
-  cfg.InstallCPUView       := CheckBoxCPUView.Checked       and cfg.InstallLazarus;
-  cfg.InstallMetaDarkStyle := CheckBoxMetaDarkStyle.Checked and cfg.InstallLazarus;
-  cfg.InstallHelpFiles     := CheckBoxHelpFiles.Checked     and cfg.InstallLazarus;
+  cfg.InstallMinimap          := CheckBoxMinimap.Checked          and cfg.InstallLazarus;
+  cfg.InstallUnleashedMinimap := CheckBoxUnleashedMinimap.Checked and cfg.InstallLazarus;
+  cfg.InstallCPUView          := CheckBoxCPUView.Checked          and cfg.InstallLazarus;
+  cfg.InstallMetaDarkStyle    := CheckBoxMetaDarkStyle.Checked    and cfg.InstallLazarus;
+  cfg.InstallHelpFiles        := CheckBoxHelpFiles.Checked        and cfg.InstallLazarus;
   // on linux this is always False (FormCreate locks Enabled+Checked=False), so no host ifdef needed
-  cfg.InstallToggleAffinity := CheckBoxToggleAffinity.Checked and cfg.InstallLazarus;
+  cfg.InstallToggleAffinity   := CheckBoxToggleAffinity.Checked   and cfg.InstallLazarus;
   cfg.LaunchAfter    := CheckBoxLaunchAfter.Checked;
   // shortcuts only when installing the IDE; UI guarantees >=1 of these when InstallLazarus is on
   cfg.MakeDesktopShortcut := CheckBoxDesktopShortcut.Checked       and cfg.InstallLazarus;

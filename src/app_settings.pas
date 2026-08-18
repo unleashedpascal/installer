@@ -25,7 +25,7 @@ type
     InstallFpc, InstallLazarus: Boolean;
     // checkbox state carried into a target dir that has no manifest
     CrossWin64, CrossWin32, CrossLinux64, CrossLinux32, CrossWasm: Boolean;
-    InstallMinimap, InstallCPUView, InstallToggleAffinity, InstallMetaDarkStyle, InstallHelpFiles: Boolean;
+    InstallMinimap, InstallUnleashedMinimap, InstallCPUView, InstallToggleAffinity, InstallMetaDarkStyle, InstallHelpFiles: Boolean;
     MakeDesktopShortcut, MakeFolderShortcut: Boolean;
     LaunchAfter, SaveLog: Boolean;
   end;
@@ -89,11 +89,12 @@ begin
   result.CrossLinux64    := toBool(lines.Values['cross-x86_64-linux'], False);
   result.CrossLinux32    := toBool(lines.Values['cross-i386-linux'], False);
   result.CrossWasm       := toBool(lines.Values['cross-wasm32-wasip1'], False);
-  result.InstallMinimap        := toBool(lines.Values['extras-minimap'], True);
-  result.InstallCPUView        := toBool(lines.Values['extras-cpuview'], True);
-  result.InstallToggleAffinity := toBool(lines.Values['extras-toggle-affinity'], False);
-  result.InstallMetaDarkStyle  := toBool(lines.Values['extras-metadarkstyle'], False);
-  result.InstallHelpFiles      := toBool(lines.Values['help-chm'], True);
+  result.InstallMinimap          := toBool(lines.Values['extras-minimap'], False);
+  result.InstallUnleashedMinimap := toBool(lines.Values['extras-unleashed-minimap'], True);
+  result.InstallCPUView          := toBool(lines.Values['extras-cpuview'], True);
+  result.InstallToggleAffinity   := toBool(lines.Values['extras-toggle-affinity'], False);
+  result.InstallMetaDarkStyle    := toBool(lines.Values['extras-metadarkstyle'], False);
+  result.InstallHelpFiles        := toBool(lines.Values['help-chm'], True);
   result.MakeDesktopShortcut   := toBool(lines.Values['shortcut-desktop'], True);
   result.MakeFolderShortcut    := toBool(lines.Values['shortcut-install-folder'], True);
   result.LaunchAfter           := toBool(lines.Values['launch-after-install'], True);
@@ -126,6 +127,7 @@ begin
   lines.Add('cross-i386-linux='+boolFlag(s.CrossLinux32));
   lines.Add('cross-wasm32-wasip1='+boolFlag(s.CrossWasm));
   lines.Add('extras-minimap='+boolFlag(s.InstallMinimap));
+  lines.Add('extras-unleashed-minimap='+boolFlag(s.InstallUnleashedMinimap));
   lines.Add('extras-cpuview='+boolFlag(s.InstallCPUView));
   lines.Add('extras-toggle-affinity='+boolFlag(s.InstallToggleAffinity));
   lines.Add('extras-metadarkstyle='+boolFlag(s.InstallMetaDarkStyle));
