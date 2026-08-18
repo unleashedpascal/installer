@@ -23,7 +23,7 @@
     <VersionInfo>
       <UseVersionInfo Value="True"/>
       <MinorVersionNr Value="1"/>
-      <RevisionNr Value="4"/>
+      <RevisionNr Value="5"/>
       <StringTable Comments="Builds the Unleashed Pascal compiler and IDE from GitHub sources" CompanyName="Unleashed Pascal" FileDescription="Unleashed Pascal Installer" InternalName="installer" LegalCopyright="(c) 2026 Unleashed Pascal" OriginalFilename="installer.exe" ProductName="Unleashed Pascal Installer"/>
     </VersionInfo>
     <BuildModes Count="4">
