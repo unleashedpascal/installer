@@ -169,6 +169,8 @@ type
     function StepRebuildLazarusForAddons: Boolean;
     procedure UnregisterIdePackage(const PkgName: string);
     function StepDownloadLazarusSource: Boolean;
+    procedure WriteLazRevisionInc(const Sha: string);
+    procedure DisableIdeRevisionUpdate;
     function StepBuildLazarus: Boolean;
     function stepBuildLHelp: Boolean;
     function stepInstallHelpFiles: Boolean;
@@ -1840,8 +1842,25 @@ begin
   end;
   RemoveDir(TempParent);
 
+  // the zip carries no .git, so the IDE build cannot discover the commit
+  // itself -- stamp it now, before anything compiles lazarus.pp
+  WriteLazRevisionInc(FCfg.LazSelectedSha);
+
   Log('Lazarus source ready: ' + Target);
   Result := True;
+end;
+
+// write <lazarus>\ide\revision.inc so the compiled IDE reports the
+// installed commit in the about box's Revision field
+procedure TInstallThread.WriteLazRevisionInc(const Sha: string);
+begin
+  if Sha = '' then Exit;
+  var Rev := Copy(LowerCase(Sha), 1, 7);
+  var Lines := autofree TStringList.Create;
+  Lines.Add('// created by Unleashed Installer');
+  Lines.Add('const RevisionStr = ''' + Rev + ''';');
+  Lines.SaveToFile(IncludeTrailingPathDelimiter(LazarusDir) + 'ide' + DirectorySeparator + 'revision.inc');
+  Log('IDE revision stamped: ' + Rev);
 end;
 
 const
@@ -2217,6 +2236,41 @@ begin
   if Touched then Cfg.Flush;
 end;
 
+// Seed/patch <pcp>\miscellaneousoptions.xml so every IDE build profile
+// carries UpdateRevisionInc=False. With it on (the default) the build
+// scouts the sources for a repository and, finding none in a zip
+// checkout, rewrites ide\revision.inc with the bare version string --
+// wiping the commit stamped by WriteLazRevisionInc. Covers both our
+// `lazbuild --build-ide` runs and later Tools -> Build Lazarus runs
+// from inside the installed IDE.
+procedure TInstallThread.DisableIdeRevisionUpdate;
+const
+  PROF_ROOT = 'MiscellaneousOptions/BuildLazarusOptions/Profiles/';
+  // the four defaults from lazarus' miscoptions.pas CreateDefaults;
+  // seeded only when no profile set exists yet, so lazbuild loads these
+  // instead of creating its own with the update flag on
+  DEFAULT_PROFILES: array[0..3] of string = ('Normal IDE', 'Debug IDE', 'Optimized IDE', 'Clean Up + Build all');
+begin
+  var Cfg := autofree TXMLConfig.Create(nil);
+  Cfg.Filename := IncludeTrailingPathDelimiter(LazarusPcp) + 'miscellaneousoptions.xml';
+  var Cnt: Integer := Cfg.GetValue(PROF_ROOT + 'Count', 0);
+  if Cnt = 0 then begin
+    Cfg.SetValue('MiscellaneousOptions/Version/Value', 4);
+    Cnt := Length(DEFAULT_PROFILES);
+    Cfg.SetValue(PROF_ROOT + 'Count', Cnt);
+    for var i := 0 to Cnt-1 do
+      Cfg.SetValue(PROF_ROOT + 'Profile' + IntToStr(i) + '/Name', DEFAULT_PROFILES[i]);
+    Cfg.SetValue(PROF_ROOT + 'Profile1/Options/Count', 1);
+    Cfg.SetValue(PROF_ROOT + 'Profile1/Options/Item1/Value', '-gw3 -gl -gh -gt -Co -Cr -Ci -Sa');
+    Cfg.SetValue(PROF_ROOT + 'Profile2/Options/Count', 1);
+    Cfg.SetValue(PROF_ROOT + 'Profile2/Options/Item1/Value', '-O3 -g- -Xs');
+    Cfg.SetValue(PROF_ROOT + 'Profile3/IdeBuildMode/Value', 'Clean All + Build');
+  end;
+  for var i := 0 to Cnt-1 do
+    Cfg.SetValue(PROF_ROOT + 'Profile' + IntToStr(i) + '/UpdateRevisionInc/Value', False);
+  Cfg.Flush;
+end;
+
 function TInstallThread.StepBuildLazarus: Boolean;
 begin
   Result := False;
@@ -2235,6 +2289,7 @@ begin
   var PathPrefix := HostFpcUtilDir + PathSeparator + HostFpcBinDir;
 {$endif}
   ForceDirectories(LazarusPcp);
+  DisableIdeRevisionUpdate;
 
   // the makefile spawns fpc itself, so our own -Fu/-n flags never reach it;
   // OPT is the only channel into those calls
@@ -2609,6 +2664,10 @@ begin
 {$endif}
 
   SetStage(isLazIde);
+  // restore the commit stamp before rebuilding: installs made before
+  // the stamping existed carry the bare version string in revision.inc
+  WriteLazRevisionInc(Prev.LazSha);
+  DisableIdeRevisionUpdate;
   if not RunLazbuild(
     ['--build-ide=-dKeepInstalledPackages'], 'lazbuild --build-ide (~5 min)') then Exit;
 
