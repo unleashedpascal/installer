@@ -63,8 +63,7 @@ type
     // the next install run can restore the checkbox state.
     LaunchAfter: Boolean;
     // IDE launch shortcuts. UI requires at least one when InstallLazarus
-    // is on -- the shortcut carries --pcp, the only correct way to start
-    // the IDE (raw binary spills config + breaks the docked layout).
+    // is on so the user has something to click after install.
     MakeDesktopShortcut: Boolean;
     MakeFolderShortcut:  Boolean;
     // SHA we resolved at the UI layer (head of chosen branch or
@@ -176,6 +175,7 @@ type
     function stepInstallHelpFiles: Boolean;
     procedure runHelpSteps;
     function StepGenerateLazarusConfig: Boolean;
+    function writeLazarusCfg: Boolean;
     function StepCreateShortcuts: Boolean;
     function ResolveLazarusRef: string;
     function LazarusDir: string;
@@ -2752,7 +2752,19 @@ begin
     if not WriteConfigFile(EditorOptPath, EDITOR_OPTIONS) then Exit;
   end;
 
+  if not writeLazarusCfg then Exit;
   Result := True;
+end;
+
+// lazarus.exe (and lazbuild.exe next to it) prepends the lines of
+// lazarus.cfg from its own directory to the command line, so a bare
+// start (file association, double-click on the binary) uses the same
+// config as the shortcut
+function TInstallThread.writeLazarusCfg: Boolean;
+begin
+  var cfgPath := IncludeTrailingPathDelimiter(LazarusDir)+'lazarus.cfg';
+  Log('Writing '+cfgPath);
+  result := WriteConfigFile(cfgPath, '--pcp='+LazarusPcp+LineEnding);
 end;
 
 function TInstallThread.StepCreateShortcuts: Boolean;
@@ -2809,8 +2821,6 @@ begin
       Log('IMPORTANT: start the IDE from the shortcut inside the');
       Log('IMPORTANT: install folder ' + TgtDir + '.');
     end;
-    Log('IMPORTANT: The raw lazarus binary skips --pcp and breaks');
-    Log('IMPORTANT: the docked layout -- always use the shortcut.');
     Log('============================================================');
   end;
   Result := True;
@@ -3426,6 +3436,8 @@ begin
       end
       else
         Log('lazarus already built at <target>\lazarus, no addon delta, skipping');
+      // installs made before lazarus.cfg existed get it on the next run
+      if not writeLazarusCfg then Exit;
       // update run: no shortcut step here, so help closes the log
       runHelpSteps;
     end

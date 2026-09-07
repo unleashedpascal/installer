@@ -570,12 +570,12 @@ begin
 end;
 
 const
-  LAUNCH_WARN_MSG = 'Tick at least one IDE shortcut above. A shortcut is the only correct way to launch the IDE; the raw binary skips --pcp and breaks the config.';
+  LAUNCH_WARN_MSG = 'Tick at least one IDE shortcut above so the IDE can be started after install.';
   LAUNCH_WARN_PAD = 5;     // inner text padding
   LAUNCH_WARN_RADIUS = 4;  // corner radius
 
-// IDE needs at least one launch shortcut (desktop or install-folder) -- it's
-// the only --pcp-correct way to start it. Flag + show the red warning live
+// IDE needs at least one launch shortcut (desktop or install-folder) so the
+// user has something to click after install. Flag + show the red warning live
 procedure TMainForm.UpdateShortcutError;
 begin
   FShortcutError := CheckBoxInstallLazarus.Checked and (not CheckBoxDesktopShortcut.Checked) and (not CheckBoxInstallFolderShortcut.Checked);
