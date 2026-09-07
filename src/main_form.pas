@@ -1495,6 +1495,11 @@ begin
   cfg.FpcSelectedSha := ResolveSelectedFpcSha;
   cfg.LazSelectedSha := ResolveSelectedLazSha;
   cfg.SaveLog        := CheckBoxSaveLog.Checked;
+  // IDE Options dialog seed: 1100x800 or 85% of the screen, whichever is
+  // smaller, converted to the 96-dpi units the IDE scales back up from
+  var dpiScale := 96 / Screen.PixelsPerInch;
+  cfg.OptionsDlgWidth  := Min(1100, Round(Screen.Width  * 0.85 * dpiScale));
+  cfg.OptionsDlgHeight := Min(800,  Round(Screen.Height * 0.85 * dpiScale));
 
   Log('--- install requested ---');
   Log('target dir: '+cfg.TargetDir);

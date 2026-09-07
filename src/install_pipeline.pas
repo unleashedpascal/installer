@@ -74,6 +74,11 @@ type
     // when True, pipeline appends every Log() line to
     // <TargetDir>\installer.log (truncated at start of each run).
     SaveLog: Boolean;
+    // seed size of the IDE Options dialog, in the 96-dpi units the IDE
+    // stores dialog layouts in. Measured in the UI layer because the
+    // pipeline runs off the main thread and must not touch Screen.
+    OptionsDlgWidth:  Integer;
+    OptionsDlgHeight: Integer;
   end;
 
   TInstallLogEvent      = procedure(const msg: string) of object;
@@ -429,15 +434,42 @@ const
     '    <MakeFilename Value="%MAKE%"/>'#13#10 +
     '    <TestBuildDirectory Value="%PROJECTS%"/>'#13#10 +
     '    <InitialFPCSrcRescanDone Value="True"/>'#13#10 +
+    '    <AutoSave OpenLastProjectAtStart="False"/>'#13#10 +
     '  </EnvironmentOptions>'#13#10 +
     // explicit Desktop1 + Desktop2 so the IDE has named entries to
     // activate; DockMaster ties Desktop2 to anchordocking. layout
     // details (window positions etc.) are filled in on first save.
+    // Each desktop carries a seed size for the IDE Options dialog: the
+    // IDE only applies a stored size when it is larger than 10x10, and
+    // rewrites the entry from the actual window when the dialog closes,
+    // so a user resize sticks from then on.
     '  <Desktops Count="2" ActiveDesktop="default docked">'#13#10 +
-    '    <Desktop1 Name="default"/>'#13#10 +
-    '    <Desktop2 Name="default docked" DockMaster="TIDEAnchorDockMaster"/>'#13#10 +
+    '    <Desktop1 Name="default">'#13#10 +
+    '%DLGSEED%' +
+    '    </Desktop1>'#13#10 +
+    '    <Desktop2 Name="default docked" DockMaster="TIDEAnchorDockMaster">'#13#10 +
+    '%DLGSEED%' +
+    '    </Desktop2>'#13#10 +
     '  </Desktops>'#13#10 +
+    '%OICOLORS%' +
     '</CONFIG>'#13#10;
+
+  // <Dialogs> block seeded into both desktops; sizes are 96-dpi units
+  OPTIONS_DLG_SEED: string =
+    '      <Dialogs Count="1">'#13#10 +
+    '        <Dialog1>'#13#10 +
+    '          <Name Value="TIDEOptionsDialog"/>'#13#10 +
+    '          <Size Width="%DLGW%" Height="%DLGH%"/>'#13#10 +
+    '        </Dialog1>'#13#10 +
+    '      </Dialogs>'#13#10;
+
+  // Object Inspector reference/value text colour, written only when
+  // MetaDarkStyle is installed - the stock clMaroon is unreadable on the
+  // dark grid, this blue is not. Light IDE keeps the Lazarus default.
+  OI_DARK_COLORS: string =
+    '  <ObjectInspectorOptions>'#13#10 +
+    '    <Color References="14258944" Value="14258944"/>'#13#10 +
+    '  </ObjectInspectorOptions>'#13#10;
 
   // pre-acknowledge the "Enable anchor docking?" prompt. without this
   // the IDE shows a blocking dialog on first run.
@@ -473,16 +505,46 @@ const
   // block selection on the middle mouse button (stock: paste). Written
   // only when the file is absent so a re-install keeps the user's fonts
   // and colour scheme.
+  // Key1/Shift1 are the raw VK code and the ctrl=1/shift=2/alt=4 bitmask
+  // the IDE stores; Default="False" is what makes it override the built-in
+  // shortcut. jcfCurrentEditorWindow is the code formatter, which claims
+  // ctrl+D by default - it is cleared so the duplicate-line binding is
+  // unambiguous.
   EDITOR_OPTIONS: string =
     '<?xml version="1.0" encoding="UTF-8"?>'#13#10 +
     '<CONFIG>'#13#10 +
     '  <EditorOptions Version="13">'#13#10 +
     '    <Misc MultiCaretOnColumnSelect="True"/>'#13#10 +
+    '    <Display EditorFont="%FONT%" EditorFontSize="10" ExtraLineSpacing="0" ExtraCharSpacing="0" DisableAntialiasing="False"/>'#13#10 +
     '    <Mouse>'#13#10 +
     '      <Default Version="1" TextMiddleClick="mbaSelectColumn"/>'#13#10 +
     '    </Mouse>'#13#10 +
+    '    <KeyMapping Scheme="default">'#13#10 +
+    '      <default Count="3">'#13#10 +
+    '        <Version Value="6"/>'#13#10 +
+    '        <Item1 Name="Duplicate line or lines in selection">'#13#10 +
+    '          <KeyA Default="False" Key1="68" Shift1="1"/>'#13#10 +
+    '        </Item1>'#13#10 +
+    '        <Item2 Name="jcfCurrentEditorWindow">'#13#10 +
+    '          <KeyA Default="False" Key1="0" Shift1="0"/>'#13#10 +
+    '        </Item2>'#13#10 +
+    '        <Item3 Name="Clean up and build">'#13#10 +
+    '          <KeyA Default="False" Key1="120" Shift1="3"/>'#13#10 +
+    '        </Item3>'#13#10 +
+    '      </default>'#13#10 +
+    '    </KeyMapping>'#13#10 +
     '  </EditorOptions>'#13#10 +
     '</CONFIG>'#13#10;
+
+  // default editor font per host; the IDE falls back to a system font
+  // when the name does not resolve, which would silently undo the setting
+  EDITOR_FONT: string =
+{$ifdef WINDOWS}
+    'Consolas';
+{$endif}
+{$ifdef LINUX}
+    'DejaVu Sans Mono';
+{$endif}
 
 constructor TInstallThread.Create(const Cfg: TInstallConfig;
   ALog: TInstallLogEvent; AProgress: TInstallProgressEvent;
@@ -2728,6 +2790,12 @@ begin
   Xml := StringReplace(Xml, '%MAKE%',     MakePath,                            [rfReplaceAll]);
   Xml := StringReplace(Xml, '%PROJECTS%', ProjectsDir,                         [rfReplaceAll]);
 
+  var DlgSeed := OPTIONS_DLG_SEED;
+  DlgSeed := StringReplace(DlgSeed, '%DLGW%', IntToStr(FCfg.OptionsDlgWidth),  [rfReplaceAll]);
+  DlgSeed := StringReplace(DlgSeed, '%DLGH%', IntToStr(FCfg.OptionsDlgHeight), [rfReplaceAll]);
+  Xml := StringReplace(Xml, '%DLGSEED%', DlgSeed, [rfReplaceAll]);
+  Xml := StringReplace(Xml, '%OICOLORS%', if FCfg.InstallMetaDarkStyle then OI_DARK_COLORS else '', [rfReplaceAll]);
+
   Log('Writing ' + LazarusPcp + '\environmentoptions.xml');
   if not WriteConfigFile(IncludeTrailingPathDelimiter(LazarusPcp) +
     'environmentoptions.xml', Xml) then Exit;
@@ -2749,7 +2817,7 @@ begin
     Log('editoroptions.xml already present, leaving it alone')
   else begin
     Log('Writing ' + LazarusPcp + '\editoroptions.xml');
-    if not WriteConfigFile(EditorOptPath, EDITOR_OPTIONS) then Exit;
+    if not WriteConfigFile(EditorOptPath, StringReplace(EDITOR_OPTIONS, '%FONT%', EDITOR_FONT, [rfReplaceAll])) then Exit;
   end;
 
   if not writeLazarusCfg then Exit;
