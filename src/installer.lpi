@@ -163,7 +163,7 @@
         <PackageName Value="LCL"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="15">
+    <Units Count="17">
       <Unit0>
         <Filename Value="installer.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -230,6 +230,16 @@
         <Filename Value="linux_deps.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit14>
+      <Unit15>
+        <Filename Value="file_assoc.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit15>
+      <Unit16>
+        <Filename Value="assoc_form.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="AssocForm"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit16>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

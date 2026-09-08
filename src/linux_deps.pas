@@ -44,6 +44,10 @@ type
 
 // wantGtk: only an IDE install links against GTK; a compiler-only run needs the toolchain alone
 function checkBuildDeps(wantGtk: Boolean): TDepStatus;
+// tools behind file associations: update-mime-database (shared-mime-info), update-desktop-database (desktop-file-utils)
+function checkAssocDeps: TDepStatus;
+// first PATH entry holding exe, '' when none
+function whichExe(const exe: string): string;
 
 implementation
 
@@ -112,6 +116,34 @@ begin
   if result.command <> '' then result.command += pkgs;
   // pkexec asks for the password through the session's polkit agent; without
   // one (server, container, bare WM) there is nothing to prompt with
+  result.canAutoInstall := (result.command <> '') and (whichExe('pkexec') <> '');
+end;
+
+// the package names are the same under every manager
+function checkAssocDeps: TDepStatus;
+begin
+  result.ok := False;
+  result.missing := '';
+  result.command := '';
+  result.canAutoInstall := False;
+  var pkgs := '';
+  if whichExe('update-mime-database') = '' then begin
+    result.missing := 'shared-mime-info (update-mime-database)';
+    pkgs += ' shared-mime-info';
+  end;
+  if whichExe('update-desktop-database') = '' then begin
+    if result.missing <> '' then result.missing += ', ';
+    result.missing += 'desktop-file-utils (update-desktop-database)';
+    pkgs += ' desktop-file-utils';
+  end;
+  if pkgs = '' then begin
+    result.ok := True;
+    exit;
+  end;
+  if whichExe('apt-get') <> '' then result.command := 'apt-get install -y'+pkgs
+  else if whichExe('dnf') <> '' then result.command := 'dnf install -y'+pkgs
+  else if whichExe('zypper') <> '' then result.command := 'zypper --non-interactive install'+pkgs
+  else if whichExe('pacman') <> '' then result.command := 'pacman -S --noconfirm'+pkgs;
   result.canAutoInstall := (result.command <> '') and (whichExe('pkexec') <> '');
 end;
 

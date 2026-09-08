@@ -760,6 +760,20 @@ object MainForm: TMainForm
           State = cbChecked
           TabOrder = 0
         end
+        object ButtonAssoc: TButton
+          Left = 530
+          Height = 30
+          Top = 5
+          Width = 170
+          Align = alRight
+          AutoSize = True
+          BorderSpacing.Right = 10
+          BorderSpacing.Around = 5
+          BorderSpacing.InnerBorder = 10
+          Caption = 'Associate file extensions'
+          TabOrder = 4
+          OnClick = ButtonAssocClick
+        end
         object ButtonInstall: TButton
           Left = 710
           Height = 30

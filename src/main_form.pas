@@ -10,7 +10,7 @@ uses
   Classes, SysUtils, Types, Math, Forms, Controls, StdCtrls, ExtCtrls, ComCtrls, Dialogs, Graphics, LCLType, LCLIntf, Menus, Clipbrd, RegExpr, fileinfo,
   {$ifdef WINDOWS} Windows, ShellApi, {$endif}
   {$ifdef LINUX} process, linux_deps, {$endif}
-  branch_fetch, branch_cache, install_pipeline, install_manifest, hash_branch, about_form, app_settings;
+  branch_fetch, branch_cache, install_pipeline, install_manifest, hash_branch, about_form, app_settings, file_assoc, assoc_form;
 
 const
   GH_OWNER     = 'unleashedpascal';
@@ -98,6 +98,7 @@ type
     CheckBoxSaveLog: TCheckBox;
     ButtonInstall: TButton;
     ButtonClose: TButton;
+    ButtonAssoc: TButton;
     ListBoxLog: TListBox;
     PopupMenuLog: TPopupMenu;
     MenuCopy: TMenuItem;
@@ -108,6 +109,7 @@ type
     procedure FormDestroy(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure ButtonBrowseClick(Sender: TObject);
+    procedure ButtonAssocClick(Sender: TObject);
     procedure ButtonInstallClick(Sender: TObject);
     procedure ButtonCloseClick(Sender: TObject);
     procedure EditTargetDirChange(Sender: TObject);
@@ -1301,12 +1303,18 @@ begin
   if SelectDirDialog.Execute then EditTargetDir.Text := SelectDirDialog.FileName;
 end;
 
+procedure TMainForm.ButtonAssocClick(Sender: TObject);
+begin
+  showAssocDialog(Self, normalizeIdePath(EditTargetDir.Text, LazarusBinarySub), @Log);
+end;
+
 procedure TMainForm.SetInputsEnabled(act: Boolean);
 begin
   CheckBoxInstallUnleashed.Enabled := act;
   CheckBoxInstallLazarus.Enabled := act;
   EditTargetDir.Enabled := act;
   ButtonBrowse.Enabled := act;
+  ButtonAssoc.Enabled := act;
   // folder-error / shortcut-error gates win over act so post-install re-enable doesn't reopen Install when invalid
   ButtonInstall.Enabled := act and (not FFolderError) and (not FShortcutError);
   ApplyUnleashedEnabled;

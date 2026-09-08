@@ -1,0 +1,162 @@
+object AssocForm: TAssocForm
+  Left = 400
+  Height = 300
+  Top = 200
+  Width = 560
+  BorderStyle = bsDialog
+  Caption = 'Associate file extensions'
+  ClientHeight = 300
+  ClientWidth = 560
+  Position = poOwnerFormCenter
+  LCLVersion = '4.99.0.0'
+  OnCreate = FormCreate
+  OnShow = FormShow
+  object pnlBody: TPanel
+    Left = 0
+    Height = 252
+    Top = 0
+    Width = 560
+    Align = alClient
+    BevelOuter = bvNone
+    ClientHeight = 252
+    ClientWidth = 560
+    TabOrder = 0
+    object lblPath: TLabel
+      Left = 12
+      Height = 15
+      Top = 12
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 12
+      BorderSpacing.Right = 12
+      Caption = 'IDE executable'
+    end
+    object edtPath: TEdit
+      Left = 12
+      Height = 23
+      Top = 31
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 4
+      BorderSpacing.Right = 12
+      TabOrder = 0
+    end
+    object lblExts: TLabel
+      Left = 12
+      Height = 15
+      Top = 66
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 12
+      BorderSpacing.Right = 12
+      Caption = 'File extensions'
+    end
+    object pnlExts: TPanel
+      Left = 12
+      Height = 60
+      Top = 85
+      Width = 536
+      Align = alTop
+      AutoSize = True
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 4
+      BorderSpacing.Right = 12
+      BevelOuter = bvNone
+      ChildSizing.HorizontalSpacing = 12
+      ChildSizing.VerticalSpacing = 6
+      ChildSizing.EnlargeHorizontal = crsHomogenousChildResize
+      ChildSizing.Layout = cclLeftToRightThenTopToBottom
+      ChildSizing.ControlsPerLine = 4
+      TabOrder = 1
+    end
+    object lblDeps: TLabel
+      Left = 12
+      Height = 15
+      Top = 157
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 12
+      BorderSpacing.Right = 12
+      Caption = 'missing:'
+      Font.Color = clRed
+      ParentFont = False
+      Visible = False
+      WordWrap = True
+    end
+    object btnInstallDeps: TButton
+      Left = 12
+      Height = 25
+      Top = 180
+      Width = 130
+      Align = alTop
+      AutoSize = True
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 8
+      BorderSpacing.Right = 400
+      Caption = 'Install packages'
+      TabOrder = 2
+      Visible = False
+      OnClick = btnInstallDepsClick
+    end
+  end
+  object pnlFoot: TPanel
+    Left = 0
+    Height = 48
+    Top = 252
+    Width = 560
+    Align = alBottom
+    BevelOuter = bvNone
+    ClientHeight = 48
+    ClientWidth = 560
+    TabOrder = 1
+    object btnSet: TButton
+      Left = 12
+      Height = 30
+      Top = 9
+      Width = 75
+      Align = alLeft
+      AutoSize = True
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 9
+      BorderSpacing.Bottom = 9
+      BorderSpacing.InnerBorder = 10
+      Caption = 'Set'
+      TabOrder = 0
+      OnClick = btnSetClick
+    end
+    object btnUnset: TButton
+      Left = 97
+      Height = 30
+      Top = 9
+      Width = 75
+      Align = alLeft
+      AutoSize = True
+      BorderSpacing.Left = 10
+      BorderSpacing.Top = 9
+      BorderSpacing.Bottom = 9
+      BorderSpacing.InnerBorder = 10
+      Caption = 'Unset'
+      TabOrder = 1
+      OnClick = btnUnsetClick
+    end
+    object btnClose: TButton
+      Left = 473
+      Height = 30
+      Top = 9
+      Width = 75
+      Align = alRight
+      AutoSize = True
+      BorderSpacing.Top = 9
+      BorderSpacing.Right = 12
+      BorderSpacing.Bottom = 9
+      BorderSpacing.InnerBorder = 10
+      Caption = 'Close'
+      ModalResult = 1
+      TabOrder = 2
+    end
+  end
+end
