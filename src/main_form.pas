@@ -1305,7 +1305,8 @@ end;
 
 procedure TMainForm.ButtonAssocClick(Sender: TObject);
 begin
-  showAssocDialog(Self, normalizeIdePath(EditTargetDir.Text, LazarusBinarySub), @Log);
+  showAssocDialog(Self, normalizeIdePath(EditTargetDir.Text, LazarusBinarySub),
+    fpcBinDirForTarget(EditTargetDir.Text), @Log);
 end;
 
 procedure TMainForm.SetInputsEnabled(act: Boolean);

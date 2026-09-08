@@ -1,11 +1,11 @@
 object AssocForm: TAssocForm
   Left = 400
-  Height = 300
+  Height = 410
   Top = 200
   Width = 560
   BorderStyle = bsDialog
-  Caption = 'Associate file extensions'
-  ClientHeight = 300
+  Caption = 'Shell integration'
+  ClientHeight = 410
   ClientWidth = 560
   Position = poOwnerFormCenter
   LCLVersion = '4.99.0.0'
@@ -13,12 +13,12 @@ object AssocForm: TAssocForm
   OnShow = FormShow
   object pnlBody: TPanel
     Left = 0
-    Height = 252
+    Height = 362
     Top = 0
     Width = 560
     Align = alClient
     BevelOuter = bvNone
-    ClientHeight = 252
+    ClientHeight = 362
     ClientWidth = 560
     TabOrder = 0
     object lblPath: TLabel
@@ -32,16 +32,16 @@ object AssocForm: TAssocForm
       BorderSpacing.Right = 12
       Caption = 'IDE executable'
     end
-    object edtPath: TEdit
+    object lblExePath: TLabel
       Left = 12
-      Height = 23
+      Height = 15
       Top = 31
       Width = 536
       Align = alTop
       BorderSpacing.Left = 12
       BorderSpacing.Top = 4
       BorderSpacing.Right = 12
-      TabOrder = 0
+      WordWrap = True
     end
     object lblExts: TLabel
       Left = 12
@@ -70,12 +70,55 @@ object AssocForm: TAssocForm
       ChildSizing.EnlargeHorizontal = crsHomogenousChildResize
       ChildSizing.Layout = cclLeftToRightThenTopToBottom
       ChildSizing.ControlsPerLine = 4
+      TabOrder = 0
+    end
+    object pnlExtBtns: TPanel
+      Left = 12
+      Height = 40
+      Top = 153
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 8
+      BorderSpacing.Right = 12
+      BevelOuter = bvNone
+      ClientHeight = 40
+      ClientWidth = 536
       TabOrder = 1
+      object btnSet: TButton
+        Left = 0
+        Height = 30
+        Top = 5
+        Width = 75
+        Align = alLeft
+        AutoSize = True
+        BorderSpacing.Top = 5
+        BorderSpacing.Bottom = 5
+        BorderSpacing.InnerBorder = 10
+        Caption = 'Set'
+        TabOrder = 0
+        OnClick = btnSetClick
+      end
+      object btnUnset: TButton
+        Left = 85
+        Height = 30
+        Top = 5
+        Width = 75
+        Align = alLeft
+        AutoSize = True
+        BorderSpacing.Left = 10
+        BorderSpacing.Top = 5
+        BorderSpacing.Bottom = 5
+        BorderSpacing.InnerBorder = 10
+        Caption = 'Unset'
+        TabOrder = 1
+        OnClick = btnUnsetClick
+      end
     end
     object lblDeps: TLabel
       Left = 12
       Height = 15
-      Top = 157
+      Top = 205
       Width = 536
       Align = alTop
       BorderSpacing.Left = 12
@@ -90,7 +133,7 @@ object AssocForm: TAssocForm
     object btnInstallDeps: TButton
       Left = 12
       Height = 25
-      Top = 180
+      Top = 228
       Width = 130
       Align = alTop
       AutoSize = True
@@ -102,51 +145,80 @@ object AssocForm: TAssocForm
       Visible = False
       OnClick = btnInstallDepsClick
     end
+    object bvlSep1: TBevel
+      Left = 12
+      Height = 2
+      Top = 265
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 12
+      BorderSpacing.Right = 12
+      Shape = bsTopLine
+    end
+    object lblPathEnv: TLabel
+      Left = 12
+      Height = 15
+      Top = 279
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 12
+      BorderSpacing.Right = 12
+      Caption = 'PATH environment'
+    end
+    object lblPathState: TLabel
+      Left = 12
+      Height = 15
+      Top = 298
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 4
+      BorderSpacing.Right = 12
+      Caption = 'Exists: no'
+      WordWrap = True
+    end
+    object btnPath: TButton
+      Left = 12
+      Height = 30
+      Top = 321
+      Width = 75
+      Align = alTop
+      AutoSize = True
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 8
+      BorderSpacing.Right = 461
+      BorderSpacing.InnerBorder = 10
+      Caption = 'Add'
+      TabOrder = 3
+      OnClick = btnPathClick
+    end
   end
   object pnlFoot: TPanel
     Left = 0
     Height = 48
-    Top = 252
+    Top = 362
     Width = 560
     Align = alBottom
     BevelOuter = bvNone
     ClientHeight = 48
     ClientWidth = 560
     TabOrder = 1
-    object btnSet: TButton
+    object bvlSep2: TBevel
       Left = 12
-      Height = 30
-      Top = 9
-      Width = 75
-      Align = alLeft
-      AutoSize = True
+      Height = 2
+      Top = 0
+      Width = 536
+      Align = alTop
       BorderSpacing.Left = 12
-      BorderSpacing.Top = 9
-      BorderSpacing.Bottom = 9
-      BorderSpacing.InnerBorder = 10
-      Caption = 'Set'
-      TabOrder = 0
-      OnClick = btnSetClick
-    end
-    object btnUnset: TButton
-      Left = 97
-      Height = 30
-      Top = 9
-      Width = 75
-      Align = alLeft
-      AutoSize = True
-      BorderSpacing.Left = 10
-      BorderSpacing.Top = 9
-      BorderSpacing.Bottom = 9
-      BorderSpacing.InnerBorder = 10
-      Caption = 'Unset'
-      TabOrder = 1
-      OnClick = btnUnsetClick
+      BorderSpacing.Right = 12
+      Shape = bsTopLine
     end
     object btnClose: TButton
       Left = 473
       Height = 30
-      Top = 9
+      Top = 11
       Width = 75
       Align = alRight
       AutoSize = True
@@ -156,7 +228,7 @@ object AssocForm: TAssocForm
       BorderSpacing.InnerBorder = 10
       Caption = 'Close'
       ModalResult = 1
-      TabOrder = 2
+      TabOrder = 0
     end
   end
 end

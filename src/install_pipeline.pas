@@ -221,6 +221,10 @@ type
     property ErrorMsg: string read FErrorMsg;
   end;
 
+// directory holding the fpc driver for an install at targetDir - what a user
+// needs on PATH to call fpc from a shell
+function fpcBinDirForTarget(const targetDir: string): string;
+
 const
 {$ifdef WINDOWS}
   // portable extract of fpc-3.2.2.i386-win32.exe (Inno Setup), unpacked
@@ -719,6 +723,13 @@ function TInstallThread.HostFpcUtilDir: string;
 begin
   Result := IncludeTrailingPathDelimiter(
     IncludeTrailingPathDelimiter(FCfg.TargetDir) + HostFpcUtilSubdir);
+end;
+
+function fpcBinDirForTarget(const targetDir: string): string;
+begin
+  var dir := Trim(targetDir);
+  if dir = '' then exit('');
+  result := ExcludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(dir) + HostFpcUtilSubdir);
 end;
 
 // Where the cross RTL units land per target:

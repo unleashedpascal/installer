@@ -770,7 +770,7 @@ object MainForm: TMainForm
           BorderSpacing.Right = 10
           BorderSpacing.Around = 5
           BorderSpacing.InnerBorder = 10
-          Caption = 'Associate file extensions'
+          Caption = 'Shell integration'
           TabOrder = 4
           OnClick = ButtonAssocClick
         end

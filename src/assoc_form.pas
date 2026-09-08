@@ -7,35 +7,44 @@ unit assoc_form;
 interface
 
 uses
-  Classes, SysUtils, Types, Forms, Controls, StdCtrls, ExtCtrls, Dialogs, file_assoc {$ifdef LINUX}, linux_deps{$endif};
+  Classes, SysUtils, Types, Forms, Controls, StdCtrls, ExtCtrls, Dialogs, file_assoc, path_env {$ifdef LINUX}, linux_deps{$endif};
 
 type
   TAssocForm = class(TForm)
     pnlBody: TPanel;
     lblPath: TLabel;
-    edtPath: TEdit;
+    lblExePath: TLabel;
     lblExts: TLabel;
     pnlExts: TPanel;
-    lblDeps: TLabel;
-    btnInstallDeps: TButton;
-    pnlFoot: TPanel;
+    pnlExtBtns: TPanel;
     btnSet: TButton;
     btnUnset: TButton;
+    lblDeps: TLabel;
+    btnInstallDeps: TButton;
+    bvlSep1: TBevel;
+    lblPathEnv: TLabel;
+    lblPathState: TLabel;
+    btnPath: TButton;
+    pnlFoot: TPanel;
+    bvlSep2: TBevel;
     btnClose: TButton;
     procedure FormCreate(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure btnSetClick(Sender: TObject);
     procedure btnUnsetClick(Sender: TObject);
+    procedure btnPathClick(Sender: TObject);
     procedure btnInstallDepsClick(Sender: TObject);
   private
     fLog: TAssocLogEvent;
     fBoxes: array of TCheckBox;
+    fFpcBinDir: string;
 {$ifdef LINUX}
     fDepCommand: string;
     fDepInstalling: Boolean;
 {$endif}
     function checkedExts: TIntegerDynArray;
     procedure setButtons(act: Boolean);
+    procedure refreshPath;
 {$ifdef LINUX}
     procedure refreshDeps;
     procedure onDepLog(const msg: string);
@@ -43,8 +52,9 @@ type
 {$endif}
   end;
 
-// exePath: proposed IDE binary; every step is reported through log
-procedure showAssocDialog(aOwner: TComponent; const exePath: string; log: TAssocLogEvent);
+// exePath: proposed IDE binary, fpcBinDir: the directory offered for PATH;
+// every step is reported through log
+procedure showAssocDialog(aOwner: TComponent; const exePath, fpcBinDir: string; log: TAssocLogEvent);
 
 implementation
 
@@ -64,9 +74,17 @@ end;
 
 procedure TAssocForm.FormShow(Sender: TObject);
 begin
+  refreshPath;
 {$ifdef LINUX}
   refreshDeps;
 {$endif}
+end;
+
+procedure TAssocForm.refreshPath;
+begin
+  var has := pathHasDir(fFpcBinDir);
+  lblPathState.Caption := (if has then 'Exists: yes' else 'Exists: no')+' - '+fFpcBinDir;
+  btnPath.Caption := if has then 'Remove' else 'Add';
 end;
 
 function TAssocForm.checkedExts: TIntegerDynArray;
@@ -81,14 +99,15 @@ begin
   btnSet.Enabled := act;
   btnUnset.Enabled := act;
   btnClose.Enabled := act;
+  btnPath.Enabled := act;
   btnInstallDeps.Enabled := act;
 end;
 
 procedure TAssocForm.btnSetClick(Sender: TObject);
 begin
-  var exe := Trim(edtPath.Text);
+  var exe := Trim(lblExePath.Caption);
   if not FileExists(exe) then begin
-    MessageDlg('Associate file extensions', 'IDE executable not found: '+exe, mtError, [mbOK], 0);
+    MessageDlg('Shell integration', 'IDE executable not found: '+exe, mtError, [mbOK], 0);
     exit;
   end;
   var exts := checkedExts;
@@ -105,6 +124,23 @@ begin
   fLog('--- removing file extension associations ---');
   if unsetAssociations(exts, fLog) then fLog('file extension associations removed')
   else fLog('file extension removal finished with errors');
+end;
+
+procedure TAssocForm.btnPathClick(Sender: TObject);
+begin
+  if fFpcBinDir = '' then exit;
+  if pathHasDir(fFpcBinDir) then begin
+    fLog('--- removing FPC binaries from PATH ---');
+    removeFromPath(fFpcBinDir, fLog);
+  end else begin
+    if not DirectoryExists(fFpcBinDir) then begin
+      MessageDlg('Shell integration', 'FPC binaries not found: '+fFpcBinDir, mtError, [mbOK], 0);
+      exit;
+    end;
+    fLog('--- adding FPC binaries to PATH ---');
+    addToPath(fFpcBinDir, fLog);
+  end;
+  refreshPath;
 end;
 
 {$ifdef LINUX}
@@ -152,11 +188,12 @@ begin
 end;
 {$endif}
 
-procedure showAssocDialog(aOwner: TComponent; const exePath: string; log: TAssocLogEvent);
+procedure showAssocDialog(aOwner: TComponent; const exePath, fpcBinDir: string; log: TAssocLogEvent);
 begin
   var dlg := autofree TAssocForm.Create(aOwner);
   dlg.fLog := log;
-  dlg.edtPath.Text := exePath;
+  dlg.lblExePath.Caption := exePath;
+  dlg.fFpcBinDir := fpcBinDir;
   dlg.ShowModal;
 end;
 
