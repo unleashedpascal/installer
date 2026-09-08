@@ -226,6 +226,7 @@ object AssocForm: TAssocForm
       BorderSpacing.Right = 12
       BorderSpacing.Bottom = 9
       BorderSpacing.InnerBorder = 10
+      Cancel = True
       Caption = 'Close'
       ModalResult = 1
       TabOrder = 0
