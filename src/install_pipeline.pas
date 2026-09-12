@@ -1133,10 +1133,13 @@ begin
   // a native compiler without the flag IEs 200208151 on first .ppu
   // read. Linux x86_64 has native x87 Extended and needs no flag.
 {$ifdef WINDOWS}
-  var SoftX80: TStringArray := ['OPT=-dFPC_SOFT_FPUX80'];
+  var NativeOpt: TStringArray := ['OPT=-dFPC_SOFT_FPUX80'];
 {$endif}
 {$ifdef LINUX}
-  var SoftX80: TStringArray := [];
+  // utils/pas2js/pas2jslib links as a shared object, and a non-PIC RTL
+  // leaves absolute relocs in the .rodata VMT sections that hardened
+  // linkers reject ("read-only segment has dynamic relocations")
+  var NativeOpt: TStringArray := ['OPT=-Cg'];
 {$endif}
 
   Log('--- Building native FPC x86_64-' + HostTargetOs + ' ---');
@@ -1152,15 +1155,15 @@ begin
   if not RunMake(['distclean'], 'make distclean') then Exit;
 
   if not RunMake(
-    ['all', 'OS_TARGET=' + HostTargetOs, 'CPU_TARGET=x86_64', 'PP=' + PpBootstrap] + SoftX80, 'make all (native FPC, ~5-10 min)') then Exit;
+    ['all', 'OS_TARGET=' + HostTargetOs, 'CPU_TARGET=x86_64', 'PP=' + PpBootstrap] + NativeOpt, 'make all (native FPC, ~5-10 min)') then Exit;
 
   SetStage(isFpcMakeUtils);
   if not RunMake(
-    ['utils', 'OS_TARGET=' + HostTargetOs, 'CPU_TARGET=x86_64', 'PP=' + PpSelf] + SoftX80, 'make utils') then Exit;
+    ['utils', 'OS_TARGET=' + HostTargetOs, 'CPU_TARGET=x86_64', 'PP=' + PpSelf] + NativeOpt, 'make utils') then Exit;
 
   SetStage(isFpcMakeInstall);
   if not RunMake(
-    ['install', 'OS_TARGET=' + HostTargetOs, 'CPU_TARGET=x86_64', 'INSTALL_PREFIX=' + FpcInstallPrefix, 'PP=' + PpSelf] + SoftX80, 'make install') then Exit;
+    ['install', 'OS_TARGET=' + HostTargetOs, 'CPU_TARGET=x86_64', 'INSTALL_PREFIX=' + FpcInstallPrefix, 'PP=' + PpSelf] + NativeOpt, 'make install') then Exit;
 
   // On Linux, `make install` doesn't drop bin/ppc* symlinks; the
   // distro packaging usually does. Without them `fpc` launcher exits
