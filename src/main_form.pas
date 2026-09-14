@@ -717,7 +717,8 @@ begin
     CheckBoxCrossWasm.Checked    := ProbeCrossInstalled(rawDir, 'wasm32-wasip1');
     // restore non-FS-detectable selections (branch/hash/addons/launch-after) from manifest
     if m.Present then begin
-      CheckBoxMinimap.Checked          := m.InstallMinimap;
+      // only one minimap can be registered; older manifests may carry both
+      CheckBoxMinimap.Checked          := m.InstallMinimap and not m.InstallUnleashedMinimap;
       CheckBoxUnleashedMinimap.Checked := m.InstallUnleashedMinimap;
       CheckBoxCPUView.Checked          := m.InstallCPUView;
       CheckBoxMetaDarkStyle.Checked    := m.InstallMetaDarkStyle;
@@ -808,7 +809,8 @@ begin
   CheckBoxCrossLinux32.Checked := d.CrossLinux32;
   CheckBoxCrossWasm.Checked    := d.CrossWasm;
 
-  CheckBoxMinimap.Checked          := d.InstallMinimap;
+  // only one minimap can be registered; older settings may carry both
+  CheckBoxMinimap.Checked          := d.InstallMinimap and not d.InstallUnleashedMinimap;
   CheckBoxUnleashedMinimap.Checked := d.InstallUnleashedMinimap;
   CheckBoxCPUView.Checked          := d.InstallCPUView;
   CheckBoxMetaDarkStyle.Checked    := d.InstallMetaDarkStyle;
@@ -1158,10 +1160,14 @@ begin
   ApplyLazarusEnabled;
 end;
 
-// i386-linux build needs ppcross386 (i386-win32 cross); auto-tick the prereq
+// i386-linux build needs ppcross386 (i386-win32 cross); auto-tick the prereq.
+// The two minimaps both hook the source editor gutter, so they are mutually
+// exclusive: ticking one unticks the other.
 procedure TMainForm.OnAddonOrCrossChange(Sender: TObject);
 begin
   if (Sender = CheckBoxCrossLinux32) and CheckBoxCrossLinux32.Checked then CheckBoxCrossWin32.Checked := True;
+  if (Sender = CheckBoxMinimap) and CheckBoxMinimap.Checked then CheckBoxUnleashedMinimap.Checked := False;
+  if (Sender = CheckBoxUnleashedMinimap) and CheckBoxUnleashedMinimap.Checked then CheckBoxMinimap.Checked := False;
   RefreshTargetState;
 end;
 

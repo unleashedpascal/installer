@@ -34,9 +34,9 @@ type
     // is needed -- the lazarus packagesystem.pas:2533 sets that define
     // automatically when building the IDE.
     InstallMinimap: Boolean;
-    // Unleashed minimap: the fork's own source-editor map, unrelated to
-    // the stock lazminimap above. Both can be registered at once, so the
-    // two checkboxes are independent.
+    // Unleashed minimap: the fork's own source-editor map, a replacement
+    // for the stock lazminimap above. Only one of the two is ever
+    // registered; the UI keeps the checkboxes mutually exclusive.
     InstallUnleashedMinimap: Boolean;
     // CPU-View IDE plugin (instructions/registers/stack views) with its
     // FWHexView runtime dependency. Both packages travel together as a
