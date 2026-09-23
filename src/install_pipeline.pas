@@ -203,6 +203,7 @@ type
     function BootstrapBinDir: string;
     function HostFpcBinDir: string;     // <target>/<HostFpcBinSubdir>/
     function HostFpcUtilDir: string;    // <target>/<HostFpcUtilSubdir>/
+    function HostFpcDriver: string;     // the `fpc` launcher lazbuild and make run
     function HostFpcUnitsDir: string;   // <target>/.../units/  -- RTL+packages
     function HostFpcVersion: string;    // detected dir name under lib/fpc/
     procedure RemoveDir(const Path: string);
@@ -723,6 +724,20 @@ function TInstallThread.HostFpcUtilDir: string;
 begin
   Result := IncludeTrailingPathDelimiter(
     IncludeTrailingPathDelimiter(FCfg.TargetDir) + HostFpcUtilSubdir);
+end;
+
+// The `fpc` launcher of the freshly built compiler: fpc.exe next to
+// ppcx64.exe on Windows, the shell wrapper in <prefix>/bin/ on Linux.
+// Passed explicitly to make (PP=) and lazbuild (--compiler=) and written
+// to environmentoptions.xml, so all three agree on one compiler.
+function TInstallThread.HostFpcDriver: string;
+begin
+{$ifdef WINDOWS}
+  Result := HostFpcBinDir + 'fpc' + ExeExt;
+{$endif}
+{$ifdef LINUX}
+  Result := HostFpcUtilDir + 'fpc';
+{$endif}
 end;
 
 function fpcBinDirForTarget(const targetDir: string): string;
@@ -2003,8 +2018,8 @@ function TInstallThread.RunLazbuild(const Args: array of string;
 begin
   var LazbuildExe := IncludeTrailingPathDelimiter(LazarusDir) + 'lazbuild' + ExeExt;
   // Linux fpc post-install splits compiler binary (lib/fpc/<ver>/) from
-  // user-facing wrappers + fpcmkcfg (bin/) -- prepend both so lazbuild's
-  // PATH-based fpc.exe discovery finds the right wrapper / binary.
+  // user-facing wrappers + fpcmkcfg (bin/) -- prepend both so the tools
+  // the launcher and the makefiles look up on PATH resolve to ours.
 {$ifdef WINDOWS}
   var PathPrefix  := HostFpcBinDir + PathSeparator + BootstrapBinDir;
 {$endif}
@@ -2013,11 +2028,17 @@ begin
 {$endif}
 
   // every lazbuild invocation gets the same boilerplate so package and
-  // IDE builds agree on pcp/cpu/os/lazarusdir
+  // IDE builds agree on pcp/cpu/os/lazarusdir/compiler
   var ArgsArr: array of string;
   begin
     var ExtArgs := autofree TStringList.Create;
     ExtArgs.Add('--pcp=' + LazarusPcp);
+    // the pcp has no environmentoptions.xml yet while packages and the IDE
+    // build, and without CompilerFilename lazbuild falls back to its own
+    // `fpc` lookup, which on a host with a distro FPC lands on /usr/bin/fpc:
+    // that 3.2.2 then reads our fpc.cfg and dies on the 3.3.1 RTL with
+    // "PPU Invalid Version". Name the compiler outright instead.
+    ExtArgs.Add('--compiler=' + HostFpcDriver);
     ExtArgs.Add('--lazarusdir=' + LazarusDir);
     ExtArgs.Add('--cpu=x86_64');
     ExtArgs.Add('--os=' + HostTargetOs);
@@ -2350,18 +2371,15 @@ end;
 function TInstallThread.StepBuildLazarus: Boolean;
 begin
   Result := False;
+  var FpcExe := HostFpcDriver;
 {$ifdef WINDOWS}
   var MakeExe    := IncludeTrailingPathDelimiter(BootstrapBinDir) + 'make.exe';
-  var FpcExe     := HostFpcBinDir + 'fpc' + ExeExt;
-  // native fpc.exe before bootstrap so lazbuild's PATH-based compiler
-  // detection picks the x86_64 wrapper; bootstrap stays for make + binutils
+  // native fpc.exe before bootstrap so tools looked up on PATH resolve
+  // to the x86_64 build; bootstrap stays for make + binutils
   var PathPrefix := HostFpcBinDir + PathSeparator + BootstrapBinDir;
 {$endif}
 {$ifdef LINUX}
   var MakeExe    := 'make';                    // system make
-  // on Linux, `fpc` is a shell wrapper in <prefix>/bin/ that exec's
-  // <prefix>/lib/fpc/<ver>/ppcx64 -- safe to pass as PP= to make.
-  var FpcExe     := HostFpcUtilDir + 'fpc' + ExeExt;
   var PathPrefix := HostFpcUtilDir + PathSeparator + HostFpcBinDir;
 {$endif}
   ForceDirectories(LazarusPcp);
@@ -2788,18 +2806,8 @@ begin
 {$ifdef LINUX}
   var MakePath := 'make';
 {$endif}
-  // FPC compiler path Lazarus uses for code-completion + project builds.
-  // On Linux the `fpc` shell wrapper in <prefix>/bin/ is what users
-  // normally point IDEs at; it dispatches to ppcx64.
-  var FpcCompilerPath :=
-{$ifdef WINDOWS}
-    HostFpcBinDir + 'fpc' + ExeExt;
-{$endif}
-{$ifdef LINUX}
-    HostFpcUtilDir + 'fpc' + ExeExt;
-{$endif}
   Xml := StringReplace(Xml, '%LAZ%',      LazarusDir,                          [rfReplaceAll]);
-  Xml := StringReplace(Xml, '%FPC%',      FpcCompilerPath,                     [rfReplaceAll]);
+  Xml := StringReplace(Xml, '%FPC%',      HostFpcDriver,                       [rfReplaceAll]);
   Xml := StringReplace(Xml, '%FPCSRC%',   MakeWorkDir,                         [rfReplaceAll]);
   Xml := StringReplace(Xml, '%MAKE%',     MakePath,                            [rfReplaceAll]);
   Xml := StringReplace(Xml, '%PROJECTS%', ProjectsDir,                         [rfReplaceAll]);
@@ -3232,7 +3240,7 @@ begin
     var TargetPrefix    := IncludeTrailingPathDelimiter(FCfg.TargetDir);
     // Use the same compiler / wrapper / units paths as the rest of the
     // pipeline so detection lines up with what the install steps create.
-    var hasFpcExe       := FileExists(HostFpcUtilDir + 'fpc' + ExeExt);
+    var hasFpcExe       := FileExists(HostFpcDriver);
     var hasLazExe       := FileExists(IncludeTrailingPathDelimiter(LazarusDir) + 'lazarus' + ExeExt);
     var hasCrossW32     := FileExists(HostFpcBinDir + 'ppcross386' + ExeExt);
     var hasCrossWasm    := FileExists(HostFpcBinDir + 'ppcrosswasm32' + ExeExt);
