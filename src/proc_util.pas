@@ -41,7 +41,7 @@ begin
   P.ShowWindow := swoHide;
   try
     P.Execute;
-    Result := P.ExitStatus;
+    Result := P.ExitCode;
   except
     on E: Exception do Result := -1;
   end;
@@ -161,7 +161,9 @@ begin
   if (OutBuf <> '') and Assigned(OnLine) then OnLine(OutBuf);
   if (ErrBuf <> '') and Assigned(OnLine) then OnLine(ErrBuf);
 
-  Result := P.ExitStatus;
+  // ExitCode, not ExitStatus: on Unix the latter is the raw wait status,
+  // so a lazbuild that exited 2 would be reported as 512
+  Result := P.ExitCode;
 end;
 
 end.

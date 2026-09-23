@@ -138,7 +138,7 @@ begin
     end else Sleep(20);
   end;
 
-  if P.ExitStatus <> 0 then raise Exception.CreateFmt('curl failed (exit=%d): %s', [P.ExitStatus, Trim(StderrBuf)]);
+  if P.ExitCode <> 0 then raise Exception.CreateFmt('curl failed (exit=%d): %s', [P.ExitCode, Trim(StderrBuf)]);
 
   if StdoutBuf.Size > 0 then begin
     SetLength(Body, StdoutBuf.Size);
