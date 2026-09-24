@@ -354,7 +354,7 @@ const
     'https://github.com/unleashedpascal/compiler/releases/download/components-v1/ToggleDisplayAffinity.zip';
   COMPONENTS_TOGGLE_SHA =
     '7EA739C994FD725FBD30EFBE216DD97732A64BC26D41EB53B03759441DB80E1E';
-  // MetaDarkStyle 0.9 dark IDE theme. Cross-platform (LCL-based). Ships
+  // MetaDarkStyle 0.10 dark IDE theme. Cross-platform (LCL-based). Ships
   // a runtime .lpk (MetaDarkStyle.lpk -- the actual dark-mode logic) and
   // a design-time .lpk (metadarkstyledsgn.lpk -- the IDE plugin that
   // exposes the theme through Tools -> Options). Both are LGPL; the
@@ -372,9 +372,9 @@ const
     'E48DEA99C5AF62D3D1746479739F6A53874D726577203802550D90B24B013884';
 
   COMPONENTS_METADARK_URL =
-    'https://github.com/unleashedpascal/compiler/releases/download/components-v1/MetaDarkStyle_0.9.zip';
+    'https://github.com/unleashedpascal/compiler/releases/download/components-v1/MetaDarkStyle_0.10.zip';
   COMPONENTS_METADARK_SHA =
-    '1E889E0B0C8BF49703C728C39F92C114B67E963B8226D46B2120696C99EED536';
+    '49EC9F44992874865F6A607685FE59FABF7B690605EBBD1D73F5B8CB66223C78';
 
 implementation
 
@@ -3144,7 +3144,7 @@ begin
     var MetaDir := IncludeTrailingPathDelimiter(Base) + 'MetaDarkStyle';
     if not FileExists(IncludeTrailingPathDelimiter(MetaDir) +
                       'metadarkstyledsgn.lpk') then begin
-      Result := FetchAndExtract(COMPONENTS_METADARK_URL, COMPONENTS_METADARK_SHA, 'MetaDarkStyle 0.9', MetaDir);
+      Result := FetchAndExtract(COMPONENTS_METADARK_URL, COMPONENTS_METADARK_SHA, 'MetaDarkStyle 0.10', MetaDir);
       if not Result then Exit;
     end
     else
