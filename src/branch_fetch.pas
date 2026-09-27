@@ -7,7 +7,7 @@ unit branch_fetch;
 interface
 
 uses
-  Classes, SysUtils, repo_url;
+  Classes, SysUtils, repo_url, proc_util;
 
 type
   TBranchFetchThread = class(TThread)
@@ -15,6 +15,7 @@ type
     FURL, FRepo: string;
     FBranches: TStringList;
     FError: string;
+    procedure onLsRemoteLine(const line: string);
   protected
     procedure Execute; override;
   public
@@ -167,9 +168,23 @@ begin
   end;
 end;
 
+// "<sha>	refs/heads/<name>" per line; anything else (stderr, tags) is skipped
+procedure TBranchFetchThread.onLsRemoteLine(const line: string);
+begin
+  var tab := Pos(#9, line);
+  if tab <> 41 then exit;
+  var ref := Copy(line, tab+1, MaxInt);
+  if Pos('refs/heads/', ref) = 1 then FBranches.Add(Copy(ref, Length('refs/heads/')+1, MaxInt)+'='+LowerCase(Copy(line, 1, 40)));
+end;
+
 procedure TBranchFetchThread.Execute;
 begin
   try
+    // a git on PATH goes first: it carries the user's stored credentials, so a private repo lists like a
+    // public one. prompts stay off, this runs unattended at startup; without git the anonymous GET below
+    if (RunStream('git', ['-c', 'credential.interactive=never', 'ls-remote', '--heads', FURL], '', '', @onLsRemoteLine) = 0) and (FBranches.Count > 0) then exit;
+    FBranches.Clear;
+
     var Url := repoRefsURL(FURL);
     var Body: string;
     if not HttpGet(Url, Body) then begin
