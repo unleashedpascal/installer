@@ -25,7 +25,7 @@ type
     InstallFpc, InstallLazarus: Boolean;
     // checkbox state carried into a target dir that has no manifest
     CrossWin64, CrossWin32, CrossLinux64, CrossLinux32, CrossWasm: Boolean;
-    InstallMinimap, InstallUnleashedMinimap, InstallCPUView, InstallToggleAffinity, InstallHelpFiles: Boolean;
+    InstallCPUView, InstallToggleAffinity, InstallHelpFiles: Boolean;
     MakeDesktopShortcut, MakeFolderShortcut: Boolean;
     LaunchAfter, SaveLog: Boolean;
     // `expert=yes` unlocks the Expert menu without the command line switch
@@ -92,8 +92,6 @@ begin
   result.CrossLinux64    := toBool(lines.Values['cross-x86_64-linux'], False);
   result.CrossLinux32    := toBool(lines.Values['cross-i386-linux'], False);
   result.CrossWasm       := toBool(lines.Values['cross-wasm32-wasip1'], False);
-  result.InstallMinimap          := toBool(lines.Values['extras-minimap'], False);
-  result.InstallUnleashedMinimap := toBool(lines.Values['extras-unleashed-minimap'], True);
   result.InstallCPUView          := toBool(lines.Values['extras-cpuview'], True);
   result.InstallToggleAffinity   := toBool(lines.Values['extras-toggle-affinity'], False);
   result.InstallHelpFiles        := toBool(lines.Values['help-chm'], True);
@@ -129,8 +127,6 @@ begin
   lines.Add('cross-x86_64-linux='+boolFlag(s.CrossLinux64));
   lines.Add('cross-i386-linux='+boolFlag(s.CrossLinux32));
   lines.Add('cross-wasm32-wasip1='+boolFlag(s.CrossWasm));
-  lines.Add('extras-minimap='+boolFlag(s.InstallMinimap));
-  lines.Add('extras-unleashed-minimap='+boolFlag(s.InstallUnleashedMinimap));
   lines.Add('extras-cpuview='+boolFlag(s.InstallCPUView));
   lines.Add('extras-toggle-affinity='+boolFlag(s.InstallToggleAffinity));
   lines.Add('help-chm='+boolFlag(s.InstallHelpFiles));

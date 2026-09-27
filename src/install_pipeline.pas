@@ -36,11 +36,6 @@ type
     // {$IFDEF AddStaticPkgs} block in lazarus.pp, so no source patching
     // is needed -- the lazarus packagesystem.pas:2533 sets that define
     // automatically when building the IDE.
-    InstallMinimap: Boolean;
-    // Unleashed minimap: the fork's own source-editor map, a replacement
-    // for the stock lazminimap above. Only one of the two is ever
-    // registered; the UI keeps the checkboxes mutually exclusive.
-    InstallUnleashedMinimap: Boolean;
     // CPU-View IDE plugin (instructions/registers/stack views) with its
     // FWHexView runtime dependency. Both packages travel together as a
     // single user-facing checkbox; pipeline registers FWHexView.LCL +
@@ -203,7 +198,6 @@ type
     procedure UnregisterCPUViewPackages;
     procedure RegisterCPUViewToolbarButton;
     procedure UnregisterCPUViewToolbarButton;
-    procedure WriteMinimapConfig;
     function WriteConfigFile(const FilePath, Content: string): Boolean;
     function MakeWorkDir: string;
     function BootstrapBinDir: string;
@@ -1999,14 +1993,6 @@ const
   LAZ_DOCKED_PACKAGES: array[0..1] of string = (
     'components\anchordocking\design\anchordockingdsgn.lpk', 'components\dockedformeditor\dockedformeditor.lpk');
 
-  // stock lazarus minimap
-  LAZ_MINIMAP_PACKAGES: array[0..0] of string = (
-    'components\minimap\lazminimap.lpk');
-
-  // the fork's own minimap, shipped inside the lazarus checkout
-  LAZ_UNLEASHED_MINIMAP_PACKAGES: array[0..0] of string = (
-    'components\unleashedminimap\unleashedminimap.lpk');
-
   // Optional CPU-View add-on lives outside the lazarus checkout to keep
   // the lazarus repo small (sources are downloaded on demand from the
   // components-v1 release into <install>/components_extra/). FWHexView
@@ -2176,25 +2162,6 @@ begin
   UnregisterIdePackage('CPUView_lin_aarch64_D');
   UnregisterIdePackage('FWHexView_D.LCL');
   UnregisterIdePackage('FWHexView.LCL');
-end;
-
-// The minimap paints the slice of the file the editor shows in a system
-// colour, and reads that colour once at startup; clMenu sits well on the
-// light IDE. Written before the IDE first runs; TXMLConfig lays out the file
-// exactly as the minimap's own TConfigStorage would.
-procedure TInstallThread.WriteMinimapConfig;
-const
-  // TColor system colour: SYS_COLOR_BASE ($80000000) or the COLOR_MENU index
-  CL_MENU = Integer($80000004);
-begin
-  var Dir := IncludeTrailingPathDelimiter(LazarusPcp);
-  if not ForceDirectories(Dir) then Exit;
-
-  var Cfg := autofree TXMLConfig.Create(nil);
-  Cfg.Filename := Dir + 'minimap.xml';
-  Cfg.SetValue('ViewWindowColor', CL_MENU);
-  Cfg.Flush;
-  Log('  minimap view window colour set to clMenu');
 end;
 
 // Add a "CPU-View" entry to the IDE editor toolbar in
@@ -2384,7 +2351,7 @@ begin
     if not AddPackage(LAZ_BASE_PACKAGES[i]) then Exit;
     // smooth-fill the package-registration slice as each lpk lands
     Progress(Round((i + 1) * 100 / (Length(LAZ_BASE_PACKAGES) +
-      Length(LAZ_DOCKED_PACKAGES) + Length(LAZ_MINIMAP_PACKAGES) + 1)), ExtractFileName(LAZ_BASE_PACKAGES[i]));
+      Length(LAZ_DOCKED_PACKAGES) + 1)), ExtractFileName(LAZ_BASE_PACKAGES[i]));
   end;
 
   Log('Registering docked-IDE packages');
@@ -2394,23 +2361,6 @@ begin
   if not AddPackage(LAZ_DOCKED_LINK_ONLY, True) then Exit;
   for var i := Low(LAZ_DOCKED_PACKAGES) to High(LAZ_DOCKED_PACKAGES) do
     if not AddPackage(LAZ_DOCKED_PACKAGES[i]) then Exit;
-
-  if FCfg.InstallMinimap then begin
-    Log('Registering Lazarus minimap addon');
-    for var i := Low(LAZ_MINIMAP_PACKAGES) to High(LAZ_MINIMAP_PACKAGES) do
-      if not AddPackage(LAZ_MINIMAP_PACKAGES[i]) then Exit;
-    WriteMinimapConfig;
-  end
-  else
-    Log('Skipping Lazarus minimap addon (not selected)');
-
-  if FCfg.InstallUnleashedMinimap then begin
-    Log('Registering Unleashed minimap addon');
-    for var i := Low(LAZ_UNLEASHED_MINIMAP_PACKAGES) to High(LAZ_UNLEASHED_MINIMAP_PACKAGES) do
-      if not AddPackage(LAZ_UNLEASHED_MINIMAP_PACKAGES[i]) then Exit;
-  end
-  else
-    Log('Skipping Unleashed minimap addon (not selected)');
 
   if FCfg.InstallCPUView then begin
     Log('Registering CPU-View addon (FWHexView + CPUView)');
@@ -2634,28 +2584,6 @@ begin
   Result := False;
   var Prev := ReadManifest(FCfg.TargetDir);
   SetStage(isLazPackages);
-
-  if FCfg.InstallMinimap and (not Prev.InstallMinimap) then begin
-    Log('Adding Lazarus minimap addon');
-    for var i := Low(LAZ_MINIMAP_PACKAGES) to High(LAZ_MINIMAP_PACKAGES) do
-      if not AddPackage(LAZ_MINIMAP_PACKAGES[i]) then Exit;
-  end
-  else if (not FCfg.InstallMinimap) and Prev.InstallMinimap then begin
-    Log('Removing Lazarus minimap addon');
-    UnregisterIdePackage('lazminimap');
-  end;
-
-  if FCfg.InstallUnleashedMinimap and (not Prev.InstallUnleashedMinimap) then begin
-    Log('Adding Unleashed minimap addon');
-    for var i := Low(LAZ_UNLEASHED_MINIMAP_PACKAGES) to High(LAZ_UNLEASHED_MINIMAP_PACKAGES) do
-      if not AddPackage(LAZ_UNLEASHED_MINIMAP_PACKAGES[i]) then Exit;
-  end
-  else if (not FCfg.InstallUnleashedMinimap) and Prev.InstallUnleashedMinimap then begin
-    Log('Removing Unleashed minimap addon');
-    UnregisterIdePackage('UnleashedMinimap');
-  end;
-
-  if (FCfg.InstallMinimap) and (not Prev.InstallMinimap) then WriteMinimapConfig;
 
   if FCfg.InstallCPUView and (not Prev.InstallCPUView) then begin
     Log('Adding CPU-View addon');
@@ -3443,7 +3371,7 @@ begin
       // addon selection vs what the manifest recorded last time -- if
       // so, run a smaller "add packages + rebuild IDE" step instead of
       // a full reinstall.
-      var addonsChanged := (FCfg.InstallMinimap <> Manifest.InstallMinimap) or (FCfg.InstallUnleashedMinimap <> Manifest.InstallUnleashedMinimap) or (FCfg.InstallCPUView <> Manifest.InstallCPUView)
+      var addonsChanged := (FCfg.InstallCPUView <> Manifest.InstallCPUView)
 {$ifdef WINDOWS}
                            or (FCfg.InstallToggleAffinity <> Manifest.InstallToggleAffinity)
 {$endif}
@@ -3488,8 +3416,6 @@ begin
     Manifest.CrossWin32   := FileExists(HostFpcBinDir + 'ppcross386' + ExeExt);
     Manifest.CrossLinux32 := DirectoryExists(HostFpcUnitsDir + 'i386-linux');
     Manifest.CrossWasm    := FileExists(HostFpcBinDir + 'ppcrosswasm32' + ExeExt);
-    Manifest.InstallMinimap := FCfg.InstallMinimap;
-    Manifest.InstallUnleashedMinimap := FCfg.InstallUnleashedMinimap;
     Manifest.InstallCPUView := FCfg.InstallCPUView;
     // record what actually landed on disk, not what was ticked -- a failed
     // download must leave the next run willing to retry

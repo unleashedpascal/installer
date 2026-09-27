@@ -29,8 +29,6 @@ type
     CrossLinux32: Boolean;     // legacy 32-bit
     CrossWasm: Boolean;
     // optional IDE addons -- written so a re-run can pre-tick the right checkboxes
-    InstallMinimap: Boolean;
-    InstallUnleashedMinimap: Boolean;
     InstallCPUView: Boolean;
     // windows-only design-time plugin; field exists everywhere so manifest is portable across hosts
     InstallToggleAffinity: Boolean;
@@ -103,8 +101,6 @@ begin
   Result.CrossLinux32 := StrToBoolDefSafe(Lines.Values['cross-i386-linux'], False);
   // accept legacy 'cross-wasm32-wasi' key so historical flag survives
   Result.CrossWasm    := StrToBoolDefSafe(Lines.Values['cross-wasm32-wasip1'], StrToBoolDefSafe(Lines.Values['cross-wasm32-wasi'], False));
-  Result.InstallMinimap          := StrToBoolDefSafe(Lines.Values['extras-minimap'], False);
-  Result.InstallUnleashedMinimap := StrToBoolDefSafe(Lines.Values['extras-unleashed-minimap'], False);
   Result.InstallCPUView          := StrToBoolDefSafe(Lines.Values['extras-cpuview'], False);
   Result.InstallToggleAffinity   := StrToBoolDefSafe(Lines.Values['extras-toggle-affinity'], False);
   Result.InstallHelpFiles        := StrToBoolDefSafe(Lines.Values['help-chm'], False);
@@ -136,8 +132,6 @@ begin
   Lines.Add('cross-x86_64-linux='+BoolFlag(M.CrossLinux64));
   Lines.Add('cross-i386-linux='+BoolFlag(M.CrossLinux32));
   Lines.Add('cross-wasm32-wasip1='+BoolFlag(M.CrossWasm));
-  Lines.Add('extras-minimap='+BoolFlag(M.InstallMinimap));
-  Lines.Add('extras-unleashed-minimap='+BoolFlag(M.InstallUnleashedMinimap));
   Lines.Add('extras-cpuview='+BoolFlag(M.InstallCPUView));
   Lines.Add('extras-toggle-affinity='+BoolFlag(M.InstallToggleAffinity));
   Lines.Add('help-chm='+BoolFlag(M.InstallHelpFiles));
