@@ -30,8 +30,6 @@ type
     checkboxcrosswasm: tcheckbox;
     checkboxcrosswin32: tcheckbox;
     checkboxcrosswin64: tcheckbox;
-    checkboxminimap: tcheckbox;
-    CheckBoxUnleashedMinimap: TCheckBox;
     checkboxtoggleaffinity: tcheckbox;
     CheckBoxHelpFiles: TCheckBox;
     GroupBoxTarget: TGroupBox;
@@ -483,8 +481,6 @@ begin
   st.CrossLinux64 := CheckBoxCrossLinux64.Checked;
   st.CrossLinux32 := CheckBoxCrossLinux32.Checked;
   st.CrossWasm    := CheckBoxCrossWasm.Checked;
-  st.InstallMinimap          := CheckBoxMinimap.Checked;
-  st.InstallUnleashedMinimap := CheckBoxUnleashedMinimap.Checked;
   st.InstallCPUView          := CheckBoxCPUView.Checked;
   st.InstallToggleAffinity   := CheckBoxToggleAffinity.Checked;
   st.InstallHelpFiles        := CheckBoxHelpFiles.Checked;
@@ -736,9 +732,6 @@ begin
     CheckBoxCrossWasm.Checked    := ProbeCrossInstalled(rawDir, 'wasm32-wasip1');
     // restore non-FS-detectable selections (branch/hash/addons/launch-after) from manifest
     if m.Present then begin
-      // only one minimap can be registered; older manifests may carry both
-      CheckBoxMinimap.Checked          := m.InstallMinimap and not m.InstallUnleashedMinimap;
-      CheckBoxUnleashedMinimap.Checked := m.InstallUnleashedMinimap;
       CheckBoxCPUView.Checked          := m.InstallCPUView;
       // help stays ticked once installed; unticking never removes the files, it just skips the fetch
       CheckBoxHelpFiles.Checked        := m.InstallHelpFiles;
@@ -768,8 +761,6 @@ begin
     if hasFpc and (selFpc <> '') and (m.FpcSha <> '') and (Pos(selFpc, m.FpcSha) <> 1) and (Pos(m.FpcSha, selFpc) <> 1) then updates := updates+' fpc '+Copy(m.FpcSha, 1, 7)+' -> '+Copy(selFpc, 1, 7);
     if hasLaz and (selLaz <> '') and (m.LazSha <> '') and (Pos(selLaz, m.LazSha) <> 1) and (Pos(m.LazSha, selLaz) <> 1) then updates := updates+' lazarus '+Copy(m.LazSha, 1, 7)+' -> '+Copy(selLaz, 1, 7);
     // addon deltas. Pipeline's StepRebuildLazarusForAddons handles them without full reinstall, but labels need to reflect reality
-    if hasLaz and (CheckBoxMinimap.Checked <> m.InstallMinimap) then updates := updates+(if CheckBoxMinimap.Checked then ' +minimap' else ' -minimap');
-    if hasLaz and (CheckBoxUnleashedMinimap.Checked <> m.InstallUnleashedMinimap) then updates := updates+(if CheckBoxUnleashedMinimap.Checked then ' +unleashed-minimap' else ' -unleashed-minimap');
     if hasLaz and (CheckBoxCPUView.Checked <> m.InstallCPUView) then updates := updates+(if CheckBoxCPUView.Checked then ' +cpuview' else ' -cpuview');
     // help files are add-only: nothing gets deleted when the box goes off, so only the +delta is real
     if hasLaz and CheckBoxHelpFiles.Checked and (not m.InstallHelpFiles) then updates := updates+' +help';
@@ -808,7 +799,6 @@ begin
   // settings file fall back to the LFM first-time values
   var d := FStoredDefaults;
   if not d.Present then begin
-    d.InstallUnleashedMinimap := True;
     d.InstallCPUView := True;
     d.InstallHelpFiles := True;
     d.InstallFpc := True;
@@ -827,9 +817,6 @@ begin
   CheckBoxCrossLinux32.Checked := d.CrossLinux32;
   CheckBoxCrossWasm.Checked    := d.CrossWasm;
 
-  // only one minimap can be registered; older settings may carry both
-  CheckBoxMinimap.Checked          := d.InstallMinimap and not d.InstallUnleashedMinimap;
-  CheckBoxUnleashedMinimap.Checked := d.InstallUnleashedMinimap;
   CheckBoxCPUView.Checked          := d.InstallCPUView;
   CheckBoxHelpFiles.Checked        := d.InstallHelpFiles;
   // toggle-affinity .Enabled=False on linux; writing False here is a no-op visually and keeps the data model clean
@@ -1146,8 +1133,6 @@ begin
   CheckBoxLaunchAfter.Enabled := CheckBoxInstallLazarus.Checked;
   EditLazarusHash.Enabled := act and (not CheckBoxLazarusLatest.Checked);
   // addons nested under IDE
-  CheckBoxMinimap.Enabled := act;
-  CheckBoxUnleashedMinimap.Enabled := act;
   CheckBoxCPUView.Enabled := act;
   CheckBoxHelpFiles.Enabled := act;
   // toggle-affinity locked off on non-Windows hosts (FormCreate disables it once)
@@ -1195,14 +1180,10 @@ begin
   ApplyLazarusEnabled;
 end;
 
-// i386-linux build needs ppcross386 (i386-win32 cross); auto-tick the prereq.
-// The two minimaps both hook the source editor gutter, so they are mutually
-// exclusive: ticking one unticks the other.
+// i386-linux build needs ppcross386 (i386-win32 cross); auto-tick the prereq
 procedure TMainForm.OnAddonOrCrossChange(Sender: TObject);
 begin
   if (Sender = CheckBoxCrossLinux32) and CheckBoxCrossLinux32.Checked then CheckBoxCrossWin32.Checked := True;
-  if (Sender = CheckBoxMinimap) and CheckBoxMinimap.Checked then CheckBoxUnleashedMinimap.Checked := False;
-  if (Sender = CheckBoxUnleashedMinimap) and CheckBoxUnleashedMinimap.Checked then CheckBoxMinimap.Checked := False;
   RefreshTargetState;
 end;
 
@@ -1585,8 +1566,6 @@ begin
   cfg.CrossLinux32   := CheckBoxCrossLinux32.Checked and cfg.InstallFpc;
   cfg.CrossWasm      := CheckBoxCrossWasm.Checked    and cfg.InstallFpc;
   // addons meaningless w/o IDE (lazbuild needs IDE)
-  cfg.InstallMinimap          := CheckBoxMinimap.Checked          and cfg.InstallLazarus;
-  cfg.InstallUnleashedMinimap := CheckBoxUnleashedMinimap.Checked and cfg.InstallLazarus;
   cfg.InstallCPUView          := CheckBoxCPUView.Checked          and cfg.InstallLazarus;
   cfg.InstallHelpFiles        := CheckBoxHelpFiles.Checked        and cfg.InstallLazarus;
   // on linux this is always False (FormCreate locks Enabled+Checked=False), so no host ifdef needed
