@@ -53,11 +53,6 @@ type
     // to an empty Register procedure. The UI surfaces it as a disabled
     // checkbox on Linux hosts to make the platform restriction obvious.
     InstallToggleAffinity: Boolean;
-    // MetaDarkStyle IDE theme: cross-platform dark color scheme for the
-    // Lazarus IDE. Runtime package (MetaDarkStyle.lpk) gets registered
-    // link-only as a dependency of the design-time piece
-    // (metadarkstyledsgn.lpk) which carries the IDE integration.
-    InstallMetaDarkStyle: Boolean;
     // CHM documentation bundle (~31 MB) into <lazarus>\docs\chm. Without
     // it F1 finds the viewer but has nothing to show. Not an IDE package:
     // no lazbuild involved, just download + extract.
@@ -208,9 +203,7 @@ type
     procedure UnregisterCPUViewPackages;
     procedure RegisterCPUViewToolbarButton;
     procedure UnregisterCPUViewToolbarButton;
-    function RegisterMetaDarkStylePackages: Boolean;
     procedure WriteMinimapConfig;
-    procedure UnregisterMetaDarkStylePackages;
     function WriteConfigFile(const FilePath, Content: string): Boolean;
     function MakeWorkDir: string;
     function BootstrapBinDir: string;
@@ -366,12 +359,6 @@ const
     'https://github.com/unleashedpascal/compiler/releases/download/components-v1/ToggleDisplayAffinity.zip';
   COMPONENTS_TOGGLE_SHA =
     '7EA739C994FD725FBD30EFBE216DD97732A64BC26D41EB53B03759441DB80E1E';
-  // MetaDarkStyle 0.10 dark IDE theme. Cross-platform (LCL-based). Ships
-  // a runtime .lpk (MetaDarkStyle.lpk -- the actual dark-mode logic) and
-  // a design-time .lpk (metadarkstyledsgn.lpk -- the IDE plugin that
-  // exposes the theme through Tools -> Options). Both are LGPL; the
-  // dsgn package pulls the runtime in via RequiredPkgs so registration
-  // order matters: link-only the runtime first, then the design-time.
   // Lazarus CHM documentation bundle: rtl/fcl/lcl/lazutils/prog/ref/user
   // .chm plus the .xct cross-reference files lhelp needs to jump between
   // them. Zip has a single top-level chm/ dir, so it extracts straight
@@ -382,11 +369,6 @@ const
     'https://github.com/unleashedpascal/compiler/releases/download/components-v1/doc-chm-fpc3.2.4-laz4.8-0.zip';
   DOCS_CHM_SHA =
     'E48DEA99C5AF62D3D1746479739F6A53874D726577203802550D90B24B013884';
-
-  COMPONENTS_METADARK_URL =
-    'https://github.com/unleashedpascal/compiler/releases/download/components-v1/MetaDarkStyle_0.10.zip';
-  COMPONENTS_METADARK_SHA =
-    '49EC9F44992874865F6A607685FE59FABF7B690605EBBD1D73F5B8CB66223C78';
 
 implementation
 
@@ -468,7 +450,6 @@ const
     '%DLGSEED%' +
     '    </Desktop2>'#13#10 +
     '  </Desktops>'#13#10 +
-    '%OICOLORS%' +
     '</CONFIG>'#13#10;
 
   // <Dialogs> block seeded into both desktops; sizes are 96-dpi units
@@ -479,14 +460,6 @@ const
     '          <Size Width="%DLGW%" Height="%DLGH%"/>'#13#10 +
     '        </Dialog1>'#13#10 +
     '      </Dialogs>'#13#10;
-
-  // Object Inspector reference/value text colour, written only when
-  // MetaDarkStyle is installed - the stock clMaroon is unreadable on the
-  // dark grid, this blue is not. Light IDE keeps the Lazarus default.
-  OI_DARK_COLORS: string =
-    '  <ObjectInspectorOptions>'#13#10 +
-    '    <Color References="14258944" Value="14258944"/>'#13#10 +
-    '  </ObjectInspectorOptions>'#13#10;
 
   // pre-acknowledge the "Enable anchor docking?" prompt. without this
   // the IDE shows a blocking dialog on first run.
@@ -2062,12 +2035,6 @@ const
   // is inside a {$ifdef WINDOWS} block.
   COMPONENTS_TOGGLE_LPK = 'ToggleDisplayAffinity\toggledisplayaffinity.lpk';
 
-  // MetaDarkStyle ships its runtime + design-time .lpk side by side at
-  // the zip root. Both are LCL-based so they compile on any LCL target;
-  // no per-platform variant.
-  COMPONENTS_METADARK_RUNTIME_LPK = 'MetaDarkStyle\metadarkstyle.lpk';
-  COMPONENTS_METADARK_DESIGN_LPK  = 'MetaDarkStyle\metadarkstyledsgn.lpk';
-
 function TInstallThread.RunLazbuild(const Args: array of string;
   const StepLabel: string): Boolean;
 begin
@@ -2211,80 +2178,23 @@ begin
   UnregisterIdePackage('FWHexView.LCL');
 end;
 
-// Register the MetaDarkStyle pair: MetaDarkStyle (runtime, link-only --
-// the actual dark theme logic) then metadarkstyledsgn (design-time, the
-// IDE plugin). Order matters because the design-time .lpk's
-// RequiredPkgs lists MetaDarkStyle by name; lazbuild resolves that
-// against the known-packages list and rejects design-time registration
-// if the runtime isn't in there yet.
-function TInstallThread.RegisterMetaDarkStylePackages: Boolean;
-
-  function HostPath(const P: string): string;
-  begin
-    Result := StringReplace(P, '\', DirectorySeparator, [rfReplaceAll]);
-  end;
-
-begin
-  Result := False;
-  var Base := IncludeTrailingPathDelimiter(ComponentsExtraDir);
-  var RuntimeLpk := HostPath(Base + COMPONENTS_METADARK_RUNTIME_LPK);
-  var DesignLpk  := HostPath(Base + COMPONENTS_METADARK_DESIGN_LPK);
-
-  if not FileExists(RuntimeLpk) then begin
-    FErrorMsg := 'MetaDarkStyle addon: missing ' + RuntimeLpk +
-                 ' (was StepDownloadComponents skipped?)';
-    Log('  ' + FErrorMsg);
-    Exit;
-  end;
-  if not FileExists(DesignLpk) then begin
-    FErrorMsg := 'MetaDarkStyle addon: missing ' + DesignLpk;
-    Log('  ' + FErrorMsg);
-    Exit;
-  end;
-
-  Log('Registering MetaDarkStyle runtime (link-only)');
-  if not AddPackageAbs(RuntimeLpk, True) then Exit;
-  Log('Registering MetaDarkStyle design-time');
-  if not AddPackageAbs(DesignLpk) then Exit;
-  Result := True;
-end;
-
-// Tear down what RegisterMetaDarkStylePackages wrote. Design-time
-// first so the runtime's removal does not leave a dangling
-// RequiredPkgs reference in the design-time entries between this
-// step and the next `lazbuild --build-ide`.
-procedure TInstallThread.UnregisterMetaDarkStylePackages;
-begin
-  UnregisterIdePackage('metadarkstyledsgn');
-  UnregisterIdePackage('MetaDarkStyle');
-end;
-
 // The minimap paints the slice of the file the editor shows in a system
-// colour, and reads that colour once at startup. clBackground (the desktop
-// colour) only sits well under MetaDarkStyle, so a light IDE gets clMenu
-// instead. Written before the IDE first runs; TXMLConfig lays out the file
+// colour, and reads that colour once at startup; clMenu sits well on the
+// light IDE. Written before the IDE first runs; TXMLConfig lays out the file
 // exactly as the minimap's own TConfigStorage would.
 procedure TInstallThread.WriteMinimapConfig;
 const
-  // TColor system colours: SYS_COLOR_BASE ($80000000) or the COLOR_* index
-  CL_BACKGROUND = Integer($80000001);
-  CL_MENU       = Integer($80000004);
+  // TColor system colour: SYS_COLOR_BASE ($80000000) or the COLOR_MENU index
+  CL_MENU = Integer($80000004);
 begin
   var Dir := IncludeTrailingPathDelimiter(LazarusPcp);
   if not ForceDirectories(Dir) then Exit;
 
-  var Color := CL_MENU;
-  var Name := 'clMenu';
-  if FCfg.InstallMetaDarkStyle then begin
-    Color := CL_BACKGROUND;
-    Name := 'clBackground';
-  end;
-
   var Cfg := autofree TXMLConfig.Create(nil);
   Cfg.Filename := Dir + 'minimap.xml';
-  Cfg.SetValue('ViewWindowColor', Color);
+  Cfg.SetValue('ViewWindowColor', CL_MENU);
   Cfg.Flush;
-  Log('  minimap view window colour set to ' + Name);
+  Log('  minimap view window colour set to clMenu');
 end;
 
 // Add a "CPU-View" entry to the IDE editor toolbar in
@@ -2508,13 +2418,6 @@ begin
   end
   else
     Log('Skipping CPU-View addon (not selected)');
-
-  if FCfg.InstallMetaDarkStyle then begin
-    Log('Registering MetaDarkStyle addon (runtime + design-time)');
-    if not RegisterMetaDarkStylePackages then Exit;
-  end
-  else
-    Log('Skipping MetaDarkStyle addon (not selected)');
 
 {$ifdef WINDOWS}
   if FCfg.InstallToggleAffinity then begin
@@ -2752,10 +2655,7 @@ begin
     UnregisterIdePackage('UnleashedMinimap');
   end;
 
-  // the colour depends on the MetaDarkStyle box too, so either box moving
-  // rewrites it
-  if FCfg.InstallMinimap and ((not Prev.InstallMinimap) or (FCfg.InstallMetaDarkStyle <> Prev.InstallMetaDarkStyle)) then
-    WriteMinimapConfig;
+  if (FCfg.InstallMinimap) and (not Prev.InstallMinimap) then WriteMinimapConfig;
 
   if FCfg.InstallCPUView and (not Prev.InstallCPUView) then begin
     Log('Adding CPU-View addon');
@@ -2778,18 +2678,6 @@ begin
     Log('Removing CPU-View addon');
     UnregisterCPUViewPackages;
     UnregisterCPUViewToolbarButton;
-  end;
-
-  if FCfg.InstallMetaDarkStyle and (not Prev.InstallMetaDarkStyle) then begin
-    Log('Adding MetaDarkStyle addon');
-    SetStage(isLazComponents);
-    if not StepDownloadComponents then Exit;
-    SetStage(isLazPackages);
-    if not RegisterMetaDarkStylePackages then Exit;
-  end
-  else if (not FCfg.InstallMetaDarkStyle) and Prev.InstallMetaDarkStyle then begin
-    Log('Removing MetaDarkStyle addon');
-    UnregisterMetaDarkStylePackages;
   end;
 
 {$ifdef WINDOWS}
@@ -2871,7 +2759,6 @@ begin
   DlgSeed := StringReplace(DlgSeed, '%DLGW%', IntToStr(FCfg.OptionsDlgWidth),  [rfReplaceAll]);
   DlgSeed := StringReplace(DlgSeed, '%DLGH%', IntToStr(FCfg.OptionsDlgHeight), [rfReplaceAll]);
   Xml := StringReplace(Xml, '%DLGSEED%', DlgSeed, [rfReplaceAll]);
-  Xml := StringReplace(Xml, '%OICOLORS%', if FCfg.InstallMetaDarkStyle then OI_DARK_COLORS else '', [rfReplaceAll]);
 
   Log('Writing ' + LazarusPcp + '\environmentoptions.xml');
   if not WriteConfigFile(IncludeTrailingPathDelimiter(LazarusPcp) +
@@ -3144,7 +3031,7 @@ begin
   // are requested -- no need to touch the network at all in that case.
   // ToggleDisplayAffinity only triggers the fetch on Windows hosts (its
   // checkbox is locked off elsewhere), so the guard reflects that.
-  var WantAnything := FCfg.InstallCPUView or FCfg.InstallMetaDarkStyle;
+  var WantAnything := FCfg.InstallCPUView;
 {$ifdef WINDOWS}
   WantAnything := WantAnything or FCfg.InstallToggleAffinity;
 {$endif}
@@ -3191,20 +3078,6 @@ begin
       Log('ToggleDisplayAffinity already present at ' + ToggleDir + ', skipping fetch');
   end;
 {$endif}
-
-  if FCfg.InstallMetaDarkStyle then begin
-    // Zip has both .lpk files (runtime + design-time) at root plus a src/
-    // tree. Presence-cache key is the design-time .lpk -- both .lpks
-    // travel together so checking just one is enough.
-    var MetaDir := IncludeTrailingPathDelimiter(Base) + 'MetaDarkStyle';
-    if not FileExists(IncludeTrailingPathDelimiter(MetaDir) +
-                      'metadarkstyledsgn.lpk') then begin
-      Result := FetchAndExtract(COMPONENTS_METADARK_URL, COMPONENTS_METADARK_SHA, 'MetaDarkStyle 0.10', MetaDir);
-      if not Result then Exit;
-    end
-    else
-      Log('MetaDarkStyle already present at ' + MetaDir + ', skipping fetch');
-  end;
 end;
 
 function TInstallThread.StepRemoveCrossWin32: Boolean;
@@ -3570,7 +3443,7 @@ begin
       // addon selection vs what the manifest recorded last time -- if
       // so, run a smaller "add packages + rebuild IDE" step instead of
       // a full reinstall.
-      var addonsChanged := (FCfg.InstallMinimap <> Manifest.InstallMinimap) or (FCfg.InstallUnleashedMinimap <> Manifest.InstallUnleashedMinimap) or (FCfg.InstallCPUView <> Manifest.InstallCPUView) or (FCfg.InstallMetaDarkStyle <> Manifest.InstallMetaDarkStyle)
+      var addonsChanged := (FCfg.InstallMinimap <> Manifest.InstallMinimap) or (FCfg.InstallUnleashedMinimap <> Manifest.InstallUnleashedMinimap) or (FCfg.InstallCPUView <> Manifest.InstallCPUView)
 {$ifdef WINDOWS}
                            or (FCfg.InstallToggleAffinity <> Manifest.InstallToggleAffinity)
 {$endif}
@@ -3618,7 +3491,6 @@ begin
     Manifest.InstallMinimap := FCfg.InstallMinimap;
     Manifest.InstallUnleashedMinimap := FCfg.InstallUnleashedMinimap;
     Manifest.InstallCPUView := FCfg.InstallCPUView;
-    Manifest.InstallMetaDarkStyle := FCfg.InstallMetaDarkStyle;
     // record what actually landed on disk, not what was ticked -- a failed
     // download must leave the next run willing to retry
     Manifest.InstallHelpFiles := FileExists(IncludeTrailingPathDelimiter(LazarusDir)+'docs'+DirectorySeparator+'chm'+DirectorySeparator+'rtl.chm');
