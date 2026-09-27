@@ -1,0 +1,120 @@
+object winexpert: twinexpert
+  Left = 400
+  Height = 168
+  Top = 200
+  Width = 560
+  BorderStyle = bsDialog
+  Caption = 'Change repo URLs'
+  ClientHeight = 168
+  ClientWidth = 560
+  Position = poOwnerFormCenter
+  LCLVersion = '4.99.0.0'
+  object panbody: TPanel
+    Left = 0
+    Height = 120
+    Top = 0
+    Width = 560
+    Align = alClient
+    BevelOuter = bvNone
+    ClientHeight = 120
+    ClientWidth = 560
+    TabOrder = 0
+    object lblide: TLabel
+      Left = 12
+      Height = 15
+      Top = 12
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 12
+      BorderSpacing.Right = 12
+      Caption = 'IDE repository'
+    end
+    object inpide: TEdit
+      Left = 12
+      Height = 23
+      Top = 31
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 4
+      BorderSpacing.Right = 12
+      TabOrder = 0
+    end
+    object lblcmp: TLabel
+      Left = 12
+      Height = 15
+      Top = 66
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 12
+      BorderSpacing.Right = 12
+      Caption = 'Compiler repository'
+    end
+    object inpcmp: TEdit
+      Left = 12
+      Height = 23
+      Top = 85
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Top = 4
+      BorderSpacing.Right = 12
+      TabOrder = 1
+    end
+  end
+  object panfoot: TPanel
+    Left = 0
+    Height = 48
+    Top = 120
+    Width = 560
+    Align = alBottom
+    BevelOuter = bvNone
+    ClientHeight = 48
+    ClientWidth = 560
+    TabOrder = 1
+    object bvlsep: TBevel
+      Left = 12
+      Height = 2
+      Top = 0
+      Width = 536
+      Align = alTop
+      BorderSpacing.Left = 12
+      BorderSpacing.Right = 12
+      Shape = bsTopLine
+    end
+    object btnsave: TButton
+      Left = 388
+      Height = 30
+      Top = 11
+      Width = 75
+      Align = alRight
+      AutoSize = True
+      BorderSpacing.Top = 9
+      BorderSpacing.Right = 10
+      BorderSpacing.Bottom = 9
+      BorderSpacing.InnerBorder = 10
+      Caption = 'Save'
+      Default = True
+      ModalResult = 1
+      TabOrder = 0
+    end
+    object btncls: TButton
+      Left = 473
+      Height = 30
+      Top = 11
+      Width = 75
+      Align = alRight
+      AutoSize = True
+      BorderSpacing.Top = 9
+      BorderSpacing.Right = 12
+      BorderSpacing.Bottom = 9
+      BorderSpacing.InnerBorder = 10
+      Cancel = True
+      Caption = 'Close'
+      ModalResult = 2
+      TabOrder = 1
+    end
+  end
+end

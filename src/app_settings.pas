@@ -28,6 +28,8 @@ type
     InstallMinimap, InstallUnleashedMinimap, InstallCPUView, InstallToggleAffinity, InstallMetaDarkStyle, InstallHelpFiles: Boolean;
     MakeDesktopShortcut, MakeFolderShortcut: Boolean;
     LaunchAfter, SaveLog: Boolean;
+    // `expert=yes` unlocks the Expert menu without the command line switch
+    Expert: Boolean;
   end;
 
 const
@@ -51,8 +53,9 @@ end;
 
 function toBool(const s: string; def: Boolean): Boolean;
 begin
-  if (s = 'yes') or (s = 'true') or (s = '1') then result := True
-  else if (s = 'no') or (s = 'false') or (s = '0') then result := False
+  var v := LowerCase(Trim(s));
+  if (v = 'yes') or (v = 'true') or (v = '1') then result := True
+  else if (v = 'no') or (v = 'false') or (v = '0') then result := False
   else result := def;
 end;
 
@@ -99,6 +102,7 @@ begin
   result.MakeFolderShortcut    := toBool(lines.Values['shortcut-install-folder'], True);
   result.LaunchAfter           := toBool(lines.Values['launch-after-install'], True);
   result.SaveLog               := toBool(lines.Values['save-log'], False);
+  result.Expert                := toBool(lines.Values['expert'], False);
   result.Present := True;
 end;
 
@@ -136,6 +140,8 @@ begin
   lines.Add('shortcut-install-folder='+boolFlag(s.MakeFolderShortcut));
   lines.Add('launch-after-install='+boolFlag(s.LaunchAfter));
   lines.Add('save-log='+boolFlag(s.SaveLog));
+  // hand-written key; kept only when set so a plain run leaves no trace of it
+  if s.Expert then lines.Add('expert=yes');
   try
     lines.SaveToFile(settingsPath);
     result := True;

@@ -305,12 +305,6 @@ const
     'AE7C0D747C55EBB1760F8B4304BFA89BE78151594F5A21B5612DE252FE879E5A';
 {$endif}
 
-  // codeload accepts branch name, tag, full or short SHA in <ref>
-  FPC_SOURCE_URL_PREFIX =
-    'https://codeload.github.com/unleashedpascal/compiler/zip/';
-  LAZARUS_SOURCE_URL_PREFIX =
-    'https://codeload.github.com/unleashedpascal/ide/zip/';
-
   // Cross-toolchain mirrors hosted on the FPC bootstrap release.
   // _BIN: cross-binutils (Win32 PE producing Linux ELF). _LIB: glibc
   // runtime + Ubuntu 18.04 shared objects for full LCL widget-set.
@@ -379,7 +373,7 @@ const
 implementation
 
 uses
-  XMLConf, download_util, hash_util, zip_util, proc_util, shortcut_util, install_manifest;
+  XMLConf, download_util, hash_util, zip_util, proc_util, shortcut_util, install_manifest, repo_url;
 
 {$ifdef LINUX}
 // libc's setenv (FPC's BaseUnix doesn't surface fpsetenv in all 3.x versions;
@@ -985,7 +979,8 @@ function TInstallThread.StepDownloadFpcSource: Boolean;
 begin
   Result := False;
   var Ref     := ResolveFpcRef;
-  var Url     := FPC_SOURCE_URL_PREFIX + Ref;
+  // codeload accepts branch name, tag, full or short SHA in <ref>
+  var Url     := repoZipURLPrefix(fpcRepoURL)+Ref;
   var ZipFile := IncludeTrailingPathDelimiter(GetTempDir) + 'unleashed-pascal-source.zip';
   var Target  := MakeWorkDir;
   // hidden temp parent so FindOnlyTopDir works regardless of siblings
@@ -1894,7 +1889,7 @@ function TInstallThread.StepDownloadLazarusSource: Boolean;
 begin
   Result := False;
   var Ref        := ResolveLazarusRef;
-  var Url        := LAZARUS_SOURCE_URL_PREFIX + Ref;
+  var Url        := repoZipURLPrefix(ideRepoURL)+Ref;
   var ZipFile    := IncludeTrailingPathDelimiter(GetTempDir) + 'lazarus-source.zip';
   var Target     := LazarusDir;
   // a hidden temp parent so FindOnlyTopDir works regardless of what else

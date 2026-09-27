@@ -861,6 +861,18 @@ object MainForm: TMainForm
         OnClick = MenuRepoInstallerClick
       end
     end
+    object MenuExpert: TMenuItem
+      Caption = 'Expert'
+      Visible = False
+      object MenuExpertRepos: TMenuItem
+        Caption = 'Change repo URLs'
+        OnClick = MenuExpertReposClick
+      end
+      object MenuExpertRefresh: TMenuItem
+        Caption = 'Refresh branches'
+        OnClick = MenuExpertRefreshClick
+      end
+    end
     object MenuHelp: TMenuItem
       Caption = 'Help'
       object MenuHelpDocs: TMenuItem

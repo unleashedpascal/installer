@@ -10,12 +10,13 @@ uses
   Classes, SysUtils, Types, Math, Forms, Controls, StdCtrls, ExtCtrls, ComCtrls, Dialogs, Graphics, LCLType, LCLIntf, Menus, Clipbrd, RegExpr, fileinfo,
   {$ifdef WINDOWS} Windows, ShellApi, {$endif}
   {$ifdef LINUX} process, linux_deps, {$endif}
-  branch_fetch, branch_cache, install_pipeline, install_manifest, hash_branch, about_form, app_settings, file_assoc, assoc_form;
+  branch_fetch, branch_cache, install_pipeline, install_manifest, hash_branch, about_form, app_settings, file_assoc, assoc_form, repo_url, expert_form;
 
 const
-  GH_OWNER     = 'unleashedpascal';
-  REPO_FPC     = 'compiler';
-  REPO_LAZARUS = 'ide';
+  // command line switch that unlocks the Expert menu; `expert=yes` in the settings file does the same
+  EXPERT_SWITCH = '--expert';
+  // log lines written by Expert menu actions; ListBoxLogDrawItem styles them
+  EXPERT_LOG_PREFIX = 'Expert Mode: ';
 
 type
   TMainForm = class(TForm)
@@ -66,6 +67,9 @@ type
     MenuRepoFreepascal: TMenuItem;
     MenuRepoLazarus: TMenuItem;
     MenuRepoInstaller: TMenuItem;
+    MenuExpert: TMenuItem;
+    MenuExpertRepos: TMenuItem;
+    MenuExpertRefresh: TMenuItem;
     MenuHelp: TMenuItem;
     MenuHelpDocs: TMenuItem;
     MenuHelpAbout: TMenuItem;
@@ -130,6 +134,8 @@ type
     procedure MenuRepoFreepascalClick(Sender: TObject);
     procedure MenuRepoLazarusClick(Sender: TObject);
     procedure MenuRepoInstallerClick(Sender: TObject);
+    procedure MenuExpertReposClick(Sender: TObject);
+    procedure MenuExpertRefreshClick(Sender: TObject);
     procedure MenuHelpDocsClick(Sender: TObject);
     procedure MenuHelpAboutClick(Sender: TObject);
   protected
@@ -148,6 +154,10 @@ type
     FUnleashedReady, FLazarusReady: Boolean;
     FShowFired: Boolean;
     FInstalling: Boolean;
+    // started with EXPERT_SWITCH or `expert=yes` in the settings: Expert menu shown, caption marked
+    FExpertMode: Boolean;
+    // a branch fetch asked for from the Expert menu skips the cache both ways: it neither reads nor rewrites the file
+    FExpertFetch: Boolean;
     // pkexec is running a package install; the Install click waits for it
     FDepInstalling: Boolean;
     // command the dialog offers to run as root, kept until the user accepts
@@ -212,6 +222,7 @@ type
     procedure OnInstallComplete(Sender: TObject);
     procedure SetStatus(const msg: string);
     procedure Log(const msg: string);
+    procedure LogExpert(const msg: string);
   end;
 
 var
@@ -386,6 +397,10 @@ begin
   var Ver := GetAppVersion;
   if Ver <> '' then Caption := Caption+' v'+Ver;
   Caption := Caption+' (built at '+BuildDate+' '+BuildTime+')';
+  FExpertMode := FStoredDefaults.Expert;
+  for var i := 1 to ParamCount do if ParamStr(i) = EXPERT_SWITCH then FExpertMode := True;
+  if FExpertMode then Caption := Caption+' (expert mode)';
+  MenuExpert.Visible := FExpertMode;
   // cross checkbox defaults must be set BEFORE EditTargetDir.Text -- that fires RefreshTargetState which probes the FS
   // and sets FCrossSyncedFor. Overrides applied after that would win against the "nothing installed" probe
   {$ifdef LINUX}
@@ -486,6 +501,8 @@ begin
   st.LazLatest := CheckBoxLazarusLatest.Checked;
   st.FpcHash   := Trim(EditUnleashedHash.Text);
   st.LazHash   := Trim(EditLazarusHash.Text);
+  // the switch never writes the key: only a hand-set `expert=yes` survives the rewrite
+  st.Expert    := FStoredDefaults.Expert;
   writeSettings(st);
 end;
 
@@ -503,10 +520,15 @@ begin
   var parsed: TParsedBinaryName;
   parsed.Present := False;
 
-  // 1. cmdline override via ParamStr(1) -- whole arg as raw blob; falls back to filename if not a valid blob
-  if (ParamCount >= 1) and (ParamStr(1) <> '') then begin
-    if TryParseBlob(ParamStr(1), parsed) then Log('using cmdline pin: '+ParamStr(1))
-    else Log('cmdline arg "'+ParamStr(1)+'" is not a pin blob; falling back to filename');
+  // 1. cmdline override -- first arg that is not a switch, whole arg as raw blob; falls back to filename if not a valid blob
+  var arg := '';
+  for var i := 1 to ParamCount do if ParamStr(i) <> EXPERT_SWITCH then begin
+    arg := ParamStr(i);
+    break;
+  end;
+  if arg <> '' then begin
+    if TryParseBlob(arg, parsed) then Log('using cmdline pin: '+arg)
+    else Log('cmdline arg "'+arg+'" is not a pin blob; falling back to filename');
   end;
 
   // 2. filename (new length-prefixed format) -- LAST hex run >= 12
@@ -926,26 +948,26 @@ begin
   var ideNames := autofree TStringList.Create;
   var age: Double;
   var fpcMainSha, ideMainSha: string;
-  if LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha) and (age < CACHE_TTL_MINUTES*60) then begin
+  if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha) and (age < CACHE_TTL_MINUTES*60) then begin
     Log('using cached branch lists ('+ageStr(age)+' old, file="'+CacheFilePath+'")');
     var fpcCache := autofree TStringList.Create;
     var lazCache := autofree TStringList.Create;
     AppendWithMainSha(fpcNames, fpcCache, fpcMainSha);
     AppendWithMainSha(ideNames, lazCache, ideMainSha);
-    FillCombo(ComboBoxUnleashedBranch, REPO_FPC, fpcCache, '');
+    FillCombo(ComboBoxUnleashedBranch, repoName(fpcRepoURL), fpcCache, '');
     FUnleashedReady := True;
     ApplyUnleashedEnabled;
     FetchTick;
-    FillCombo(ComboBoxLazarusBranch, REPO_LAZARUS, lazCache, '');
+    FillCombo(ComboBoxLazarusBranch, repoName(ideRepoURL), lazCache, '');
     FLazarusReady := True;
     ApplyLazarusEnabled;
     FetchTick;
     Exit;
   end;
 
-  Log('Fetching branches from github.com/'+GH_OWNER+'/'+REPO_FPC+' and /'+REPO_LAZARUS);
-  TBranchFetchThread.Create(GH_OWNER, REPO_FPC,     @OnUnleashedDone);
-  TBranchFetchThread.Create(GH_OWNER, REPO_LAZARUS, @OnLazarusDone);
+  Log('Fetching branches from '+fpcRepoURL+' and '+ideRepoURL);
+  TBranchFetchThread.Create(repoOwner(fpcRepoURL), repoName(fpcRepoURL), @OnUnleashedDone);
+  TBranchFetchThread.Create(repoOwner(ideRepoURL), repoName(ideRepoURL), @OnLazarusDone);
 end;
 
 // failed-fetch fallback: build 'name=sha' from bare names, attaching the cached HEAD SHA only to 'main'
@@ -966,15 +988,15 @@ begin
     var ideNames := autofree TStringList.Create;
     var age: Double;
     var fpcMainSha, ideMainSha: string;
-    if LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha) and (fpcNames.Count > 0) then begin
+    if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha) and (fpcNames.Count > 0) then begin
       var fallback := autofree TStringList.Create;
       NamesToShaListWithMain(fpcNames, fallback, fpcMainSha);
-      Log('FAILED to fetch '+REPO_FPC+' branches ('+T.ErrorMsg+'); using stale cache ('+ageStr(age)+' old)');
-      FillCombo(ComboBoxUnleashedBranch, REPO_FPC, fallback, '');
-    end else FillCombo(ComboBoxUnleashedBranch, REPO_FPC, T.Branches, T.ErrorMsg);
+      Log('FAILED to fetch '+T.Repo+' branches ('+T.ErrorMsg+'); using stale cache ('+ageStr(age)+' old)');
+      FillCombo(ComboBoxUnleashedBranch, T.Repo, fallback, '');
+    end else FillCombo(ComboBoxUnleashedBranch, T.Repo, T.Branches, T.ErrorMsg);
     FFpcFetchOk := False;
   end else begin
-    FillCombo(ComboBoxUnleashedBranch, REPO_FPC, T.Branches, T.ErrorMsg);
+    FillCombo(ComboBoxUnleashedBranch, T.Repo, T.Branches, T.ErrorMsg);
     FFpcFetchOk := True;
   end;
   FUnleashedReady := True;
@@ -991,15 +1013,15 @@ begin
     var ideNames := autofree TStringList.Create;
     var age: Double;
     var fpcMainSha, ideMainSha: string;
-    if LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha) and (ideNames.Count > 0) then begin
+    if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha) and (ideNames.Count > 0) then begin
       var fallback := autofree TStringList.Create;
       NamesToShaListWithMain(ideNames, fallback, ideMainSha);
-      Log('FAILED to fetch '+REPO_LAZARUS+' branches ('+T.ErrorMsg+'); using stale cache ('+ageStr(age)+' old)');
-      FillCombo(ComboBoxLazarusBranch, REPO_LAZARUS, fallback, '');
-    end else FillCombo(ComboBoxLazarusBranch, REPO_LAZARUS, T.Branches, T.ErrorMsg);
+      Log('FAILED to fetch '+T.Repo+' branches ('+T.ErrorMsg+'); using stale cache ('+ageStr(age)+' old)');
+      FillCombo(ComboBoxLazarusBranch, T.Repo, fallback, '');
+    end else FillCombo(ComboBoxLazarusBranch, T.Repo, T.Branches, T.ErrorMsg);
     FLazFetchOk := False;
   end else begin
-    FillCombo(ComboBoxLazarusBranch, REPO_LAZARUS, T.Branches, T.ErrorMsg);
+    FillCombo(ComboBoxLazarusBranch, T.Repo, T.Branches, T.ErrorMsg);
     FLazFetchOk := True;
   end;
   FLazarusReady := True;
@@ -1009,8 +1031,8 @@ end;
 
 procedure TMainForm.FillCombo(Combo: TComboBox; const Repo: string; Branches: TStringList; const ErrorMsg: string);
 begin
-  // pick matching SHA map by repo so caller code stays simple
-  var shaMap := if Repo = REPO_FPC then FFpcBranchShas else if Repo = REPO_LAZARUS then FLazBranchShas else nil;
+  // pick matching SHA map by combo so caller code stays simple
+  var shaMap := if Combo = ComboBoxUnleashedBranch then FFpcBranchShas else if Combo = ComboBoxLazarusBranch then FLazBranchShas else nil;
   if shaMap <> nil then shaMap.Clear;
 
   Combo.Items.Clear;
@@ -1068,7 +1090,7 @@ begin
   Dec(FFetchPending);
   if FFetchPending = 0 then begin
     // rewrite cache only on full success; partial-success leaves old file alone for future fallback
-    if FFpcFetchOk and FLazFetchOk then begin
+    if FFpcFetchOk and FLazFetchOk and (not FExpertFetch) then begin
       SaveCache(FFpcBranchShas, FLazBranchShas);
       Log('cached branch lists (TTL '+IntToStr(CACHE_TTL_MINUTES)+' min, file="'+CacheFilePath+'")');
     end;
@@ -1199,6 +1221,11 @@ begin
   ListBoxLog.TopIndex := ListBoxLog.Items.Count-1;
 end;
 
+procedure TMainForm.LogExpert(const msg: string);
+begin
+  Log(EXPERT_LOG_PREFIX+msg);
+end;
+
 procedure TMainForm.SetDoubleBufferedRecursive(c: TWinControl);
 begin
   c.DoubleBuffered := True;
@@ -1258,6 +1285,64 @@ begin
   OpenURL('https://github.com/unleashedpascal/installer');
 end;
 
+procedure TMainForm.MenuExpertReposClick(Sender: TObject);
+
+  // '' for a usable URL, the reason otherwise
+  function urlProblem(const url: string): string;
+  begin
+    result := '';
+    if url = '' then exit('empty');
+    if (repoOwner(url) = '') or (repoName(url) = '') then exit('expected https://github.com/<owner>/<repo>');
+  end;
+
+begin
+  var dlg := autofree twinexpert.Create(Self);
+  dlg.inpide.Text := ideRepoURL;
+  dlg.inpcmp.Text := fpcRepoURL;
+  if dlg.ShowModal <> mrOK then exit;
+
+  var ide := Trim(dlg.inpide.Text);
+  var cmp := Trim(dlg.inpcmp.Text);
+  var changed := False;
+  if ide <> ideRepoURL then begin
+    var why := urlProblem(ide);
+    if why <> '' then LogExpert('IDE repo "'+ide+'" rejected: '+why)
+    else begin
+      ideRepoURL := ide;
+      changed := True;
+      LogExpert('IDE repo changed to '+ide);
+    end;
+  end;
+  if cmp <> fpcRepoURL then begin
+    var why := urlProblem(cmp);
+    if why <> '' then LogExpert('compiler repo "'+cmp+'" rejected: '+why)
+    else begin
+      fpcRepoURL := cmp;
+      changed := True;
+      LogExpert('compiler repo changed to '+cmp);
+    end;
+  end;
+  if not changed then exit;
+
+  if FFetchPending > 0 then begin
+    LogExpert('branch fetch already running, refresh branches once it is done');
+    exit;
+  end;
+  FExpertFetch := True;
+  StartBranchFetch;
+end;
+
+procedure TMainForm.MenuExpertRefreshClick(Sender: TObject);
+begin
+  if FFetchPending > 0 then begin
+    LogExpert('branch fetch already running');
+    exit;
+  end;
+  LogExpert('refreshing branches, cache bypassed');
+  FExpertFetch := True;
+  StartBranchFetch;
+end;
+
 procedure TMainForm.MenuHelpDocsClick(Sender: TObject);
 begin
   OpenURL('https://github.com/unleashedpascal/compiler/blob/main/unleashed/docs/README.md');
@@ -1295,6 +1380,11 @@ begin
     cv.Brush.Color := clYellow;
     cv.Font.Color := clBlack;
     cv.Font.Style := [fsBold];
+  end else if Pos('# '+EXPERT_LOG_PREFIX, s) > 0 then begin
+    // expert menu actions: white on near-black
+    cv.Brush.Color := TColor($333333);
+    cv.Font.Color := clWhite;
+    cv.Font.Style := [];
   end else begin
     cv.Brush.Color := clWindow;
     cv.Font.Color := ColorForLine(s);
@@ -1322,6 +1412,8 @@ begin
   EditTargetDir.Enabled := act;
   ButtonBrowse.Enabled := act;
   ButtonAssoc.Enabled := act;
+  // the pipeline reads the repo URLs when it gets to the download, so they stay frozen during install
+  MenuExpert.Enabled := act;
   // folder-error / shortcut-error gates win over act so post-install re-enable doesn't reopen Install when invalid
   ButtonInstall.Enabled := act and (not FFolderError) and (not FShortcutError);
   ApplyUnleashedEnabled;
