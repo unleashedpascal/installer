@@ -121,6 +121,7 @@ type
     procedure PaintBoxLaunchWarnPaint(Sender: TObject);
     procedure LabelLinkCPUViewClick(Sender: TObject);
     procedure OnSelectionChange(Sender: TObject);
+    procedure showBranchHead(combo: TComboBox);
     procedure ListBoxLogDrawItem(Control: TWinControl; Index: Integer; ARect: TRect; State: TOwnerDrawState);
     procedure ListBoxLogKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure MenuCopyClick(Sender: TObject);
@@ -880,9 +881,22 @@ begin
             else '';
 end;
 
+// under "latest" the locked commit edit mirrors the head of the branch in combo; an unknown head leaves it alone
+procedure TMainForm.showBranchHead(combo: TComboBox);
+begin
+  if (combo = ComboBoxUnleashedBranch) and (CheckBoxUnleashedLatest.Checked) then begin
+    var sha := FFpcBranchShas.Values[combo.Text];
+    if sha <> '' then EditUnleashedHash.Text := sha;
+  end else if (combo = ComboBoxLazarusBranch) and (CheckBoxLazarusLatest.Checked) then begin
+    var sha := FLazBranchShas.Values[combo.Text];
+    if sha <> '' then EditLazarusHash.Text := sha;
+  end;
+end;
+
 procedure TMainForm.OnSelectionChange(Sender: TObject);
 begin
   // wired to combo + hash edit OnChange; keeps LabelMode's '(update available)' hint live as user picks
+  if Sender is TComboBox then showBranchHead(TComboBox(Sender));
   RefreshTargetState;
 end;
 
@@ -925,18 +939,6 @@ begin
 end;
 
 procedure TMainForm.StartBranchFetch;
-
-  // convert bare-name list to 'name=sha' form FillCombo expects; only 'main' gets a SHA from cache
-  procedure AppendWithMainSha(Src: TStrings; Dest: TStrings; const MainSha: string);
-  begin
-    Dest.Clear;
-    for var i := 0 to Src.Count-1 do begin
-      var name := Src[i];
-      if SameText(name, 'main') then Dest.Add(name+'='+MainSha)
-      else Dest.Add(name+'=');
-    end;
-  end;
-
 begin
   SetStatus('Updating branches list...');
   FFetchPending := 2;
@@ -945,16 +947,12 @@ begin
   ButtonInstall.Enabled := False;
 
   // cache-first: skip the fetch if the cache file is younger than CACHE_TTL_MINUTES and was built from the same repo URLs
-  var fpcNames := autofree TStringList.Create;
-  var ideNames := autofree TStringList.Create;
+  var fpcCache := autofree TStringList.Create;
+  var lazCache := autofree TStringList.Create;
   var age: Double;
-  var fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache: string;
-  if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache) and (age < CACHE_TTL_MINUTES*60) and (fpcRepoCache = fpcRepoURL) and (ideRepoCache = ideRepoURL) then begin
+  var fpcRepoCache, ideRepoCache: string;
+  if (not FExpertFetch) and (LoadCache(fpcCache, lazCache, age, fpcRepoCache, ideRepoCache)) and (age < CACHE_TTL_MINUTES*60) and (fpcRepoCache = fpcRepoURL) and (ideRepoCache = ideRepoURL) then begin
     Log('using cached branch lists ('+ageStr(age)+' old, file="'+CacheFilePath+'")');
-    var fpcCache := autofree TStringList.Create;
-    var lazCache := autofree TStringList.Create;
-    AppendWithMainSha(fpcNames, fpcCache, fpcMainSha);
-    AppendWithMainSha(ideNames, lazCache, ideMainSha);
     FillCombo(ComboBoxUnleashedBranch, repoName(fpcRepoURL), fpcCache, '');
     FUnleashedReady := True;
     ApplyUnleashedEnabled;
@@ -971,29 +969,18 @@ begin
   TBranchFetchThread.Create(ideRepoURL, @OnLazarusDone);
 end;
 
-// failed-fetch fallback: build 'name=sha' from bare names, attaching the cached HEAD SHA only to 'main'
-procedure NamesToShaListWithMain(Src, Dest: TStringList; const MainSha: string);
-begin
-  Dest.Clear;
-  for var i := 0 to Src.Count-1 do
-    if SameText(Src[i], 'main') then Dest.Add(Src[i]+'='+MainSha)
-    else Dest.Add(Src[i]+'=');
-end;
-
 procedure TMainForm.OnUnleashedDone(Sender: TObject);
 begin
   if GShuttingDown then exit;
   var T := TBranchFetchThread(Sender);
   if T.ErrorMsg <> '' then begin
-    var fpcNames := autofree TStringList.Create;
-    var ideNames := autofree TStringList.Create;
+    var fpcCache := autofree TStringList.Create;
+    var lazCache := autofree TStringList.Create;
     var age: Double;
-    var fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache: string;
-    if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache) and (fpcRepoCache = fpcRepoURL) and (fpcNames.Count > 0) then begin
-      var fallback := autofree TStringList.Create;
-      NamesToShaListWithMain(fpcNames, fallback, fpcMainSha);
+    var fpcRepoCache, ideRepoCache: string;
+    if (not FExpertFetch) and (LoadCache(fpcCache, lazCache, age, fpcRepoCache, ideRepoCache)) and (fpcRepoCache = fpcRepoURL) and (fpcCache.Count > 0) then begin
       Log('FAILED to fetch '+T.Repo+' branches ('+T.ErrorMsg+'); using stale cache ('+ageStr(age)+' old)');
-      FillCombo(ComboBoxUnleashedBranch, T.Repo, fallback, '');
+      FillCombo(ComboBoxUnleashedBranch, T.Repo, fpcCache, '');
     end else FillCombo(ComboBoxUnleashedBranch, T.Repo, T.Branches, T.ErrorMsg);
     FFpcFetchOk := False;
   end else begin
@@ -1010,15 +997,13 @@ begin
   if GShuttingDown then exit;
   var T := TBranchFetchThread(Sender);
   if T.ErrorMsg <> '' then begin
-    var fpcNames := autofree TStringList.Create;
-    var ideNames := autofree TStringList.Create;
+    var fpcCache := autofree TStringList.Create;
+    var lazCache := autofree TStringList.Create;
     var age: Double;
-    var fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache: string;
-    if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache) and (ideRepoCache = ideRepoURL) and (ideNames.Count > 0) then begin
-      var fallback := autofree TStringList.Create;
-      NamesToShaListWithMain(ideNames, fallback, ideMainSha);
+    var fpcRepoCache, ideRepoCache: string;
+    if (not FExpertFetch) and (LoadCache(fpcCache, lazCache, age, fpcRepoCache, ideRepoCache)) and (ideRepoCache = ideRepoURL) and (lazCache.Count > 0) then begin
       Log('FAILED to fetch '+T.Repo+' branches ('+T.ErrorMsg+'); using stale cache ('+ageStr(age)+' old)');
-      FillCombo(ComboBoxLazarusBranch, T.Repo, fallback, '');
+      FillCombo(ComboBoxLazarusBranch, T.Repo, lazCache, '');
     end else FillCombo(ComboBoxLazarusBranch, T.Repo, T.Branches, T.ErrorMsg);
     FLazFetchOk := False;
   end else begin
@@ -1083,6 +1068,9 @@ begin
   if idx < 0 then idx := Combo.Items.IndexOf('master');
   if idx < 0 then idx := 0;
   if Combo.Items.Count > 0 then Combo.ItemIndex := idx;
+  // a programmatic pick fires no OnChange, so the edit follows the new list here (fresh dir, expert refetch);
+  // a manifest dir's first pass then overrides it with the installed commit
+  showBranchHead(Combo);
   RefreshTargetState;
 end;
 
@@ -1156,7 +1144,6 @@ procedure TMainForm.CheckBoxUnleashedLatestChange(Sender: TObject);
 begin
   // on checked->unchecked, pre-fill the now-enabled commit edit.
   // priority: 1) installer.ini SHA (pin to disk install, don't silently stage HEAD); 2) head SHA of selected branch.
-  // live fetch knows every branch SHA; cache-hit only knows 'main' so other branches leave the edit blank
   if not CheckBoxUnleashedLatest.Checked then begin
     var sha: string := '';
     var m := ReadManifest(Trim(EditTargetDir.Text));
