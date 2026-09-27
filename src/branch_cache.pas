@@ -14,10 +14,10 @@ const
   CACHE_FILENAME = 'unleashed-installer.cache';
   CACHE_TTL_MINUTES = 5;
 
-// loads branch lists + per-repo main HEAD SHA + the repo URLs they came from; True iff file parses and has `Cached at:`
-function LoadCache(FpcBranches, IdeBranches: TStringList; out AgeSeconds: Double; out FpcMainSha, IdeMainSha, FpcRepo, IdeRepo: string): Boolean;
+// loads branch lists as 'name=sha' pairs + the repo URLs they came from; True iff file parses and has `Cached at:`
+function LoadCache(FpcBranches, IdeBranches: TStringList; out AgeSeconds: Double; out FpcRepo, IdeRepo: string): Boolean;
 
-// writes branch lists + per-repo main SHAs + repo URLs; source TStrings are 'name=sha' pairs
+// writes branch lists with every head SHA + repo URLs; source TStrings are 'name=sha' pairs
 procedure SaveCache(FpcBranches, IdeBranches: TStrings; const FpcRepo, IdeRepo: string);
 
 // full path to cache file (per-user temp + CACHE_FILENAME)
@@ -31,16 +31,15 @@ uses
 const
   FPC_PREFIX      = 'fpc-branches=';
   IDE_PREFIX      = 'ide-branches=';
-  // schema scales: future preload of more branches just adds sha1-fpc-<name>= keys; older readers ignore unknowns
-  FPC_HASH_PREFIX = 'sha1-fpc-main=';
-  IDE_HASH_PREFIX = 'sha1-ide-main=';
+  // one sha1-fpc-<name>=<sha> key per branch; older readers ignore keys they do not know
+  FPC_HASH_PREFIX = 'sha1-fpc-';
+  IDE_HASH_PREFIX = 'sha1-ide-';
   // the lists only mean something next to the URLs they were fetched from
   FPC_REPO_PREFIX = 'fpc-repo=';
   IDE_REPO_PREFIX = 'ide-repo=';
   TS_PREFIX       = '# Cached at: ';
   HEADER          = '# Unleashed Installer cache file';
   TS_FORMAT       = 'yyyy-mm-dd hh:nn:ss';
-  MAIN_BRANCH     = 'main';
 
 function CacheFilePath: string;
 begin
@@ -64,12 +63,10 @@ begin
   end;
 end;
 
-function LoadCache(FpcBranches, IdeBranches: TStringList; out AgeSeconds: Double; out FpcMainSha, IdeMainSha, FpcRepo, IdeRepo: string): Boolean;
+function LoadCache(FpcBranches, IdeBranches: TStringList; out AgeSeconds: Double; out FpcRepo, IdeRepo: string): Boolean;
 begin
   Result := False;
   AgeSeconds := 1e9;
-  FpcMainSha := '';
-  IdeMainSha := '';
   FpcRepo := '';
   IdeRepo := '';
   FpcBranches.Clear;
@@ -85,6 +82,9 @@ begin
 
   var fpcLine := '';
   var ideLine := '';
+  // 'name=sha' per repo, joined to the name lists below
+  var fpcShas := autofree TStringList.Create;
+  var ideShas := autofree TStringList.Create;
   var gotTimestamp := False;
   var cachedAt: TDateTime := 0;
 
@@ -104,8 +104,8 @@ begin
     if ln[1] = '#' then Continue;
     if Pos(FPC_PREFIX, ln) = 1 then fpcLine := Copy(ln, Length(FPC_PREFIX)+1, MaxInt)
     else if Pos(IDE_PREFIX, ln) = 1 then ideLine := Copy(ln, Length(IDE_PREFIX)+1, MaxInt)
-    else if Pos(FPC_HASH_PREFIX, ln) = 1 then FpcMainSha := LowerCase(Trim(Copy(ln, Length(FPC_HASH_PREFIX)+1, MaxInt)))
-    else if Pos(IDE_HASH_PREFIX, ln) = 1 then IdeMainSha := LowerCase(Trim(Copy(ln, Length(IDE_HASH_PREFIX)+1, MaxInt)))
+    else if Pos(FPC_HASH_PREFIX, ln) = 1 then fpcShas.Add(Copy(ln, Length(FPC_HASH_PREFIX)+1, MaxInt))
+    else if Pos(IDE_HASH_PREFIX, ln) = 1 then ideShas.Add(Copy(ln, Length(IDE_HASH_PREFIX)+1, MaxInt))
     else if Pos(FPC_REPO_PREFIX, ln) = 1 then FpcRepo := Trim(Copy(ln, Length(FPC_REPO_PREFIX)+1, MaxInt))
     else if Pos(IDE_REPO_PREFIX, ln) = 1 then IdeRepo := Trim(Copy(ln, Length(IDE_REPO_PREFIX)+1, MaxInt));
   end;
@@ -115,6 +115,8 @@ begin
 
   ParseCommaList(fpcLine, FpcBranches);
   ParseCommaList(ideLine, IdeBranches);
+  for var i := 0 to FpcBranches.Count-1 do FpcBranches[i] := FpcBranches[i]+'='+LowerCase(Trim(fpcShas.Values[FpcBranches[i]]));
+  for var i := 0 to IdeBranches.Count-1 do IdeBranches[i] := IdeBranches[i]+'='+LowerCase(Trim(ideShas.Values[IdeBranches[i]]));
   Result := True;
 end;
 
@@ -133,17 +135,6 @@ procedure SaveCache(FpcBranches, IdeBranches: TStrings; const FpcRepo, IdeRepo: 
     end;
   end;
 
-  // SHA of 'main' from a 'name=sha' TStrings, '' if absent
-  function MainSha(L: TStrings): string;
-  begin
-    Result := '';
-    for var i := 0 to L.Count-1 do
-      if SameText(L.Names[i], MAIN_BRANCH) then begin
-        Result := L.ValueFromIndex[i];
-        Exit;
-      end;
-  end;
-
 begin
   var f := autofree TStringList.Create;
   f.Add(HEADER);
@@ -151,8 +142,9 @@ begin
   f.Add('');
   f.Add(FPC_PREFIX+JoinNames(FpcBranches));
   f.Add(IDE_PREFIX+JoinNames(IdeBranches));
-  f.Add(FPC_HASH_PREFIX+MainSha(FpcBranches));
-  f.Add(IDE_HASH_PREFIX+MainSha(IdeBranches));
+  // entries are 'name=sha' already, the prefix turns each into its own key
+  for var i := 0 to FpcBranches.Count-1 do f.Add(FPC_HASH_PREFIX+FpcBranches[i]);
+  for var i := 0 to IdeBranches.Count-1 do f.Add(IDE_HASH_PREFIX+IdeBranches[i]);
   f.Add(FPC_REPO_PREFIX+FpcRepo);
   f.Add(IDE_REPO_PREFIX+IdeRepo);
   try
