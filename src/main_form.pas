@@ -34,14 +34,12 @@ type
     CheckBoxUnleashedMinimap: TCheckBox;
     checkboxtoggleaffinity: tcheckbox;
     CheckBoxHelpFiles: TCheckBox;
-    CheckBoxMetaDarkStyle: TCheckBox;
     GroupBoxTarget: TGroupBox;
     GroupBoxUnleashed: TGroupBox;
     CheckBoxInstallUnleashed: TCheckBox;
     imagelogo: timage;
     labellazarusaddons: tlabel;
     LabelLinkCPUView: TLabel;
-    LabelLinkMetaDarkStyle: TLabel;
     labellazarushash1: tlabel;
     LabelUnleashedBranch: TLabel;
     ComboBoxUnleashedBranch: TComboBox;
@@ -124,7 +122,6 @@ type
     procedure OnAddonOrCrossChange(Sender: TObject);
     procedure PaintBoxLaunchWarnPaint(Sender: TObject);
     procedure LabelLinkCPUViewClick(Sender: TObject);
-    procedure LabelLinkMetaDarkStyleClick(Sender: TObject);
     procedure OnSelectionChange(Sender: TObject);
     procedure ListBoxLogDrawItem(Control: TWinControl; Index: Integer; ARect: TRect; State: TOwnerDrawState);
     procedure ListBoxLogKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -490,7 +487,6 @@ begin
   st.InstallUnleashedMinimap := CheckBoxUnleashedMinimap.Checked;
   st.InstallCPUView          := CheckBoxCPUView.Checked;
   st.InstallToggleAffinity   := CheckBoxToggleAffinity.Checked;
-  st.InstallMetaDarkStyle    := CheckBoxMetaDarkStyle.Checked;
   st.InstallHelpFiles        := CheckBoxHelpFiles.Checked;
   st.MakeDesktopShortcut     := CheckBoxDesktopShortcut.Checked;
   st.MakeFolderShortcut      := CheckBoxInstallFolderShortcut.Checked;
@@ -744,7 +740,6 @@ begin
       CheckBoxMinimap.Checked          := m.InstallMinimap and not m.InstallUnleashedMinimap;
       CheckBoxUnleashedMinimap.Checked := m.InstallUnleashedMinimap;
       CheckBoxCPUView.Checked          := m.InstallCPUView;
-      CheckBoxMetaDarkStyle.Checked    := m.InstallMetaDarkStyle;
       // help stays ticked once installed; unticking never removes the files, it just skips the fetch
       CheckBoxHelpFiles.Checked        := m.InstallHelpFiles;
       // skip windows-only checkbox restore on linux (FormCreate locked Enabled=False)
@@ -776,7 +771,6 @@ begin
     if hasLaz and (CheckBoxMinimap.Checked <> m.InstallMinimap) then updates := updates+(if CheckBoxMinimap.Checked then ' +minimap' else ' -minimap');
     if hasLaz and (CheckBoxUnleashedMinimap.Checked <> m.InstallUnleashedMinimap) then updates := updates+(if CheckBoxUnleashedMinimap.Checked then ' +unleashed-minimap' else ' -unleashed-minimap');
     if hasLaz and (CheckBoxCPUView.Checked <> m.InstallCPUView) then updates := updates+(if CheckBoxCPUView.Checked then ' +cpuview' else ' -cpuview');
-    if hasLaz and (CheckBoxMetaDarkStyle.Checked <> m.InstallMetaDarkStyle) then updates := updates+(if CheckBoxMetaDarkStyle.Checked then ' +metadarkstyle' else ' -metadarkstyle');
     // help files are add-only: nothing gets deleted when the box goes off, so only the +delta is real
     if hasLaz and CheckBoxHelpFiles.Checked and (not m.InstallHelpFiles) then updates := updates+' +help';
     // skip toggle-affinity delta on linux (user can't change it)
@@ -837,7 +831,6 @@ begin
   CheckBoxMinimap.Checked          := d.InstallMinimap and not d.InstallUnleashedMinimap;
   CheckBoxUnleashedMinimap.Checked := d.InstallUnleashedMinimap;
   CheckBoxCPUView.Checked          := d.InstallCPUView;
-  CheckBoxMetaDarkStyle.Checked    := d.InstallMetaDarkStyle;
   CheckBoxHelpFiles.Checked        := d.InstallHelpFiles;
   // toggle-affinity .Enabled=False on linux; writing False here is a no-op visually and keeps the data model clean
   CheckBoxToggleAffinity.Checked   := d.InstallToggleAffinity and CheckBoxToggleAffinity.Enabled;
@@ -1156,7 +1149,6 @@ begin
   CheckBoxMinimap.Enabled := act;
   CheckBoxUnleashedMinimap.Enabled := act;
   CheckBoxCPUView.Enabled := act;
-  CheckBoxMetaDarkStyle.Enabled := act;
   CheckBoxHelpFiles.Enabled := act;
   // toggle-affinity locked off on non-Windows hosts (FormCreate disables it once)
 {$ifdef WINDOWS}
@@ -1217,11 +1209,6 @@ end;
 procedure TMainForm.LabelLinkCPUViewClick(Sender: TObject);
 begin
   OpenURL('https://github.com/AlexanderBagel/CPUView');
-end;
-
-procedure TMainForm.LabelLinkMetaDarkStyleClick(Sender: TObject);
-begin
-  OpenURL('https://github.com/zamtmn/metadarkstyle');
 end;
 
 procedure TMainForm.SetStatus(const msg: string);
@@ -1601,7 +1588,6 @@ begin
   cfg.InstallMinimap          := CheckBoxMinimap.Checked          and cfg.InstallLazarus;
   cfg.InstallUnleashedMinimap := CheckBoxUnleashedMinimap.Checked and cfg.InstallLazarus;
   cfg.InstallCPUView          := CheckBoxCPUView.Checked          and cfg.InstallLazarus;
-  cfg.InstallMetaDarkStyle    := CheckBoxMetaDarkStyle.Checked    and cfg.InstallLazarus;
   cfg.InstallHelpFiles        := CheckBoxHelpFiles.Checked        and cfg.InstallLazarus;
   // on linux this is always False (FormCreate locks Enabled+Checked=False), so no host ifdef needed
   cfg.InstallToggleAffinity   := CheckBoxToggleAffinity.Checked   and cfg.InstallLazarus;

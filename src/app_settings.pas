@@ -25,7 +25,7 @@ type
     InstallFpc, InstallLazarus: Boolean;
     // checkbox state carried into a target dir that has no manifest
     CrossWin64, CrossWin32, CrossLinux64, CrossLinux32, CrossWasm: Boolean;
-    InstallMinimap, InstallUnleashedMinimap, InstallCPUView, InstallToggleAffinity, InstallMetaDarkStyle, InstallHelpFiles: Boolean;
+    InstallMinimap, InstallUnleashedMinimap, InstallCPUView, InstallToggleAffinity, InstallHelpFiles: Boolean;
     MakeDesktopShortcut, MakeFolderShortcut: Boolean;
     LaunchAfter, SaveLog: Boolean;
     // `expert=yes` unlocks the Expert menu without the command line switch
@@ -96,7 +96,6 @@ begin
   result.InstallUnleashedMinimap := toBool(lines.Values['extras-unleashed-minimap'], True);
   result.InstallCPUView          := toBool(lines.Values['extras-cpuview'], True);
   result.InstallToggleAffinity   := toBool(lines.Values['extras-toggle-affinity'], False);
-  result.InstallMetaDarkStyle    := toBool(lines.Values['extras-metadarkstyle'], False);
   result.InstallHelpFiles        := toBool(lines.Values['help-chm'], True);
   result.MakeDesktopShortcut   := toBool(lines.Values['shortcut-desktop'], True);
   result.MakeFolderShortcut    := toBool(lines.Values['shortcut-install-folder'], True);
@@ -134,7 +133,6 @@ begin
   lines.Add('extras-unleashed-minimap='+boolFlag(s.InstallUnleashedMinimap));
   lines.Add('extras-cpuview='+boolFlag(s.InstallCPUView));
   lines.Add('extras-toggle-affinity='+boolFlag(s.InstallToggleAffinity));
-  lines.Add('extras-metadarkstyle='+boolFlag(s.InstallMetaDarkStyle));
   lines.Add('help-chm='+boolFlag(s.InstallHelpFiles));
   lines.Add('shortcut-desktop='+boolFlag(s.MakeDesktopShortcut));
   lines.Add('shortcut-install-folder='+boolFlag(s.MakeFolderShortcut));
