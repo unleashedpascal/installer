@@ -14,11 +14,11 @@ const
   CACHE_FILENAME = 'unleashed-installer.cache';
   CACHE_TTL_MINUTES = 5;
 
-// loads branch lists + per-repo main HEAD SHA; True iff file parses and has `Cached at:`
-function LoadCache(FpcBranches, IdeBranches: TStringList; out AgeSeconds: Double; out FpcMainSha, IdeMainSha: string): Boolean;
+// loads branch lists + per-repo main HEAD SHA + the repo URLs they came from; True iff file parses and has `Cached at:`
+function LoadCache(FpcBranches, IdeBranches: TStringList; out AgeSeconds: Double; out FpcMainSha, IdeMainSha, FpcRepo, IdeRepo: string): Boolean;
 
-// writes branch lists + per-repo main SHAs; source TStrings are 'name=sha' pairs
-procedure SaveCache(FpcBranches, IdeBranches: TStrings);
+// writes branch lists + per-repo main SHAs + repo URLs; source TStrings are 'name=sha' pairs
+procedure SaveCache(FpcBranches, IdeBranches: TStrings; const FpcRepo, IdeRepo: string);
 
 // full path to cache file (per-user temp + CACHE_FILENAME)
 function CacheFilePath: string;
@@ -34,6 +34,9 @@ const
   // schema scales: future preload of more branches just adds sha1-fpc-<name>= keys; older readers ignore unknowns
   FPC_HASH_PREFIX = 'sha1-fpc-main=';
   IDE_HASH_PREFIX = 'sha1-ide-main=';
+  // the lists only mean something next to the URLs they were fetched from
+  FPC_REPO_PREFIX = 'fpc-repo=';
+  IDE_REPO_PREFIX = 'ide-repo=';
   TS_PREFIX       = '# Cached at: ';
   HEADER          = '# Unleashed Installer cache file';
   TS_FORMAT       = 'yyyy-mm-dd hh:nn:ss';
@@ -61,12 +64,14 @@ begin
   end;
 end;
 
-function LoadCache(FpcBranches, IdeBranches: TStringList; out AgeSeconds: Double; out FpcMainSha, IdeMainSha: string): Boolean;
+function LoadCache(FpcBranches, IdeBranches: TStringList; out AgeSeconds: Double; out FpcMainSha, IdeMainSha, FpcRepo, IdeRepo: string): Boolean;
 begin
   Result := False;
   AgeSeconds := 1e9;
   FpcMainSha := '';
   IdeMainSha := '';
+  FpcRepo := '';
+  IdeRepo := '';
   FpcBranches.Clear;
   IdeBranches.Clear;
   if not FileExists(CacheFilePath) then Exit;
@@ -100,7 +105,9 @@ begin
     if Pos(FPC_PREFIX, ln) = 1 then fpcLine := Copy(ln, Length(FPC_PREFIX)+1, MaxInt)
     else if Pos(IDE_PREFIX, ln) = 1 then ideLine := Copy(ln, Length(IDE_PREFIX)+1, MaxInt)
     else if Pos(FPC_HASH_PREFIX, ln) = 1 then FpcMainSha := LowerCase(Trim(Copy(ln, Length(FPC_HASH_PREFIX)+1, MaxInt)))
-    else if Pos(IDE_HASH_PREFIX, ln) = 1 then IdeMainSha := LowerCase(Trim(Copy(ln, Length(IDE_HASH_PREFIX)+1, MaxInt)));
+    else if Pos(IDE_HASH_PREFIX, ln) = 1 then IdeMainSha := LowerCase(Trim(Copy(ln, Length(IDE_HASH_PREFIX)+1, MaxInt)))
+    else if Pos(FPC_REPO_PREFIX, ln) = 1 then FpcRepo := Trim(Copy(ln, Length(FPC_REPO_PREFIX)+1, MaxInt))
+    else if Pos(IDE_REPO_PREFIX, ln) = 1 then IdeRepo := Trim(Copy(ln, Length(IDE_REPO_PREFIX)+1, MaxInt));
   end;
 
   if not gotTimestamp then Exit;
@@ -111,7 +118,7 @@ begin
   Result := True;
 end;
 
-procedure SaveCache(FpcBranches, IdeBranches: TStrings);
+procedure SaveCache(FpcBranches, IdeBranches: TStrings; const FpcRepo, IdeRepo: string);
 
   // join into "a, b, c"; reads Names[i] for 'name=sha' entries, raw entry otherwise
   function JoinNames(L: TStrings): string;
@@ -146,6 +153,8 @@ begin
   f.Add(IDE_PREFIX+JoinNames(IdeBranches));
   f.Add(FPC_HASH_PREFIX+MainSha(FpcBranches));
   f.Add(IDE_HASH_PREFIX+MainSha(IdeBranches));
+  f.Add(FPC_REPO_PREFIX+FpcRepo);
+  f.Add(IDE_REPO_PREFIX+IdeRepo);
   try
     f.SaveToFile(CacheFilePath);
   except

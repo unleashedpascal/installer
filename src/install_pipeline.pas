@@ -21,6 +21,9 @@ type
     LazLatest:      Boolean;
     LazBranch:      string;
     LazHash:        string;
+    // git repos the sources come from, taken from the UI when Install is clicked
+    FpcRepoURL:     string;
+    LazRepoURL:     string;
     TargetDir:      string;
     CrossWin64:     Boolean;     // only meaningful on Linux host
     CrossWin32:     Boolean;     // legacy
@@ -388,7 +391,7 @@ const
 implementation
 
 uses
-  XMLConf, download_util, hash_util, zip_util, shortcut_util, install_manifest, repo_url;
+  XMLConf, download_util, hash_util, zip_util, shortcut_util, install_manifest;
 
 {$ifdef LINUX}
 // libc's setenv (FPC's BaseUnix doesn't surface fpsetenv in all 3.x versions;
@@ -963,7 +966,7 @@ end;
 
 function TInstallThread.StepDownloadFpcSource: Boolean;
 begin
-  result := fetchSource(fpcRepoURL, FCfg.FpcBranch, (if FCfg.FpcLatest then '' else FCfg.FpcHash), MakeWorkDir, 'unleashed-pascal', fFpcHeadSha);
+  result := fetchSource(FCfg.FpcRepoURL, FCfg.FpcBranch, (if FCfg.FpcLatest then '' else FCfg.FpcHash), MakeWorkDir, 'unleashed-pascal', fFpcHeadSha);
 end;
 
 // one-shot dump of the inherited env vars that point FPC at another
@@ -1823,7 +1826,7 @@ end;
 
 function TInstallThread.StepDownloadLazarusSource: Boolean;
 begin
-  result := fetchSource(ideRepoURL, FCfg.LazBranch, (if FCfg.LazLatest then '' else FCfg.LazHash), LazarusDir, 'lazarus', fLazHeadSha);
+  result := fetchSource(FCfg.LazRepoURL, FCfg.LazBranch, (if FCfg.LazLatest then '' else FCfg.LazHash), LazarusDir, 'lazarus', fLazHeadSha);
   if not result then exit;
   // the tree carries no .git any more, so the IDE build cannot discover the commit
   // itself -- stamp it now, before anything compiles lazarus.pp
@@ -3594,6 +3597,8 @@ begin
     Manifest.LazBranch   := FCfg.LazBranch;
     Manifest.LazSha      := if fLazHeadSha <> '' then fLazHeadSha else FCfg.LazSelectedSha;
     Manifest.LazLatest   := FCfg.LazLatest;
+    Manifest.FpcRepo     := FCfg.FpcRepoURL;
+    Manifest.LazRepo     := FCfg.LazRepoURL;
     // Cross-target detection by RTL units presence (the multi-target
     // ppcrossx64 / ppcross386 binaries are reused, so units dir is the
     // signal). On Windows host x86_64-win64 is native (always present)

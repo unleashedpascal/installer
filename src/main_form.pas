@@ -199,6 +199,7 @@ type
     procedure UpdateShortcutError;
     procedure ResetTargetControlsToDefaults;
     function applyStoredSettings: Boolean;
+    procedure applyManifestRepos(const m: TInstallManifest);
     procedure storeSettings;
     procedure ApplyHashesFromBinaryName;
     function ResolveSelectedFpcSha: string;
@@ -762,6 +763,7 @@ begin
         EditLazarusHash.Text         := m.LazSha;
         CheckBoxLazarusLatest.Checked := m.LazLatest;
       end;
+      applyManifestRepos(m);
     end;
   end;
   if m.Present then begin
@@ -864,6 +866,25 @@ begin
   ApplyLazarusEnabled;
 end;
 
+// an install made from other repos records their URLs; following them keeps an update on the same source,
+// expert mode or not
+procedure TMainForm.applyManifestRepos(const m: TInstallManifest);
+begin
+  var changed := False;
+  if (m.LazRepo <> '') and (m.LazRepo <> ideRepoURL) then begin
+    ideRepoURL := m.LazRepo;
+    changed := True;
+    Log('IDE repo from '+MANIFEST_FILE+': '+m.LazRepo);
+  end;
+  if (m.FpcRepo <> '') and (m.FpcRepo <> fpcRepoURL) then begin
+    fpcRepoURL := m.FpcRepo;
+    changed := True;
+    Log('compiler repo from '+MANIFEST_FILE+': '+m.FpcRepo);
+  end;
+  // before FormShow the first fetch is still ahead and picks the URLs up by itself
+  if changed and FShowFired and (FFetchPending = 0) then StartBranchFetch;
+end;
+
 function TMainForm.ResolveSelectedFpcSha: string;
 begin
   // explicit hash wins; otherwise head SHA of currently-selected branch (as of last fetch)
@@ -943,12 +964,12 @@ begin
   FLazFetchOk := False;
   ButtonInstall.Enabled := False;
 
-  // cache-first: skip GitHub fetch if cache file is younger than CACHE_TTL_MINUTES. saves anon API quota across launches
+  // cache-first: skip the fetch if the cache file is younger than CACHE_TTL_MINUTES and was built from the same repo URLs
   var fpcNames := autofree TStringList.Create;
   var ideNames := autofree TStringList.Create;
   var age: Double;
-  var fpcMainSha, ideMainSha: string;
-  if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha) and (age < CACHE_TTL_MINUTES*60) then begin
+  var fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache: string;
+  if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache) and (age < CACHE_TTL_MINUTES*60) and (fpcRepoCache = fpcRepoURL) and (ideRepoCache = ideRepoURL) then begin
     Log('using cached branch lists ('+ageStr(age)+' old, file="'+CacheFilePath+'")');
     var fpcCache := autofree TStringList.Create;
     var lazCache := autofree TStringList.Create;
@@ -987,8 +1008,8 @@ begin
     var fpcNames := autofree TStringList.Create;
     var ideNames := autofree TStringList.Create;
     var age: Double;
-    var fpcMainSha, ideMainSha: string;
-    if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha) and (fpcNames.Count > 0) then begin
+    var fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache: string;
+    if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache) and (fpcRepoCache = fpcRepoURL) and (fpcNames.Count > 0) then begin
       var fallback := autofree TStringList.Create;
       NamesToShaListWithMain(fpcNames, fallback, fpcMainSha);
       Log('FAILED to fetch '+T.Repo+' branches ('+T.ErrorMsg+'); using stale cache ('+ageStr(age)+' old)');
@@ -1012,8 +1033,8 @@ begin
     var fpcNames := autofree TStringList.Create;
     var ideNames := autofree TStringList.Create;
     var age: Double;
-    var fpcMainSha, ideMainSha: string;
-    if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha) and (ideNames.Count > 0) then begin
+    var fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache: string;
+    if (not FExpertFetch) and LoadCache(fpcNames, ideNames, age, fpcMainSha, ideMainSha, fpcRepoCache, ideRepoCache) and (ideRepoCache = ideRepoURL) and (ideNames.Count > 0) then begin
       var fallback := autofree TStringList.Create;
       NamesToShaListWithMain(ideNames, fallback, ideMainSha);
       Log('FAILED to fetch '+T.Repo+' branches ('+T.ErrorMsg+'); using stale cache ('+ageStr(age)+' old)');
@@ -1091,7 +1112,7 @@ begin
   if FFetchPending = 0 then begin
     // rewrite cache only on full success; partial-success leaves old file alone for future fallback
     if FFpcFetchOk and FLazFetchOk and (not FExpertFetch) then begin
-      SaveCache(FFpcBranchShas, FLazBranchShas);
+      SaveCache(FFpcBranchShas, FLazBranchShas, fpcRepoURL, ideRepoURL);
       Log('cached branch lists (TTL '+IntToStr(CACHE_TTL_MINUTES)+' min, file="'+CacheFilePath+'")');
     end;
     SetStatus('Ready');
@@ -1598,6 +1619,8 @@ begin
   cfg.LazLatest      := CheckBoxLazarusLatest.Checked;
   cfg.LazBranch      := ComboBoxLazarusBranch.Text;
   cfg.LazHash        := Trim(EditLazarusHash.Text);
+  cfg.FpcRepoURL     := fpcRepoURL;
+  cfg.LazRepoURL     := ideRepoURL;
   // resolved SHA into manifest for later compare; empty if branch list not yet loaded
   cfg.FpcSelectedSha := ResolveSelectedFpcSha;
   cfg.LazSelectedSha := ResolveSelectedLazSha;

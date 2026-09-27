@@ -20,6 +20,9 @@ type
     LazBranch: string;
     LazSha: string;
     LazLatest: Boolean;
+    // git repos the sources came from; '' in manifests written before the field existed
+    FpcRepo: string;
+    LazRepo: string;
     CrossWin64: Boolean;       // cross to x86_64-win64 (only built on linux64 host)
     CrossWin32: Boolean;       // legacy 32-bit
     CrossLinux64: Boolean;     // cross to x86_64-linux (only built on win64 host)
@@ -94,6 +97,8 @@ begin
   Result.LazBranch    := Lines.Values['lazarus-branch'];
   Result.LazSha       := LowerCase(Lines.Values['lazarus-sha']);
   Result.LazLatest    := StrToBoolDefSafe(Lines.Values['lazarus-latest'], Result.LazSha = '');
+  Result.FpcRepo      := Trim(Lines.Values['fpc-repo']);
+  Result.LazRepo      := Trim(Lines.Values['lazarus-repo']);
   Result.CrossWin64   := StrToBoolDefSafe(Lines.Values['cross-x86_64-win64'], False);
   Result.CrossWin32   := StrToBoolDefSafe(Lines.Values['cross-i386-win32'], False);
   Result.CrossLinux64 := StrToBoolDefSafe(Lines.Values['cross-x86_64-linux'], False);
@@ -127,6 +132,8 @@ begin
   Lines.Add('lazarus-branch='+M.LazBranch);
   Lines.Add('lazarus-sha='+LowerCase(M.LazSha));
   Lines.Add('lazarus-latest='+BoolFlag(M.LazLatest));
+  Lines.Add('fpc-repo='+M.FpcRepo);
+  Lines.Add('lazarus-repo='+M.LazRepo);
   Lines.Add('cross-x86_64-win64='+BoolFlag(M.CrossWin64));
   Lines.Add('cross-i386-win32='+BoolFlag(M.CrossWin32));
   Lines.Add('cross-x86_64-linux='+BoolFlag(M.CrossLinux64));
