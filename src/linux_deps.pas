@@ -85,13 +85,16 @@ begin
 
   var needGtk  := wantGtk and ((not haveLib('libgtk-3.so')) or (not haveLib('libgdk-3.so')));
   var needTool := (not haveLib('libc.so')) or (whichExe('ld') = '');
-  if not (needGtk or needTool) then begin
+  // the sources are fetched with git
+  var needGit  := whichExe('git') = '';
+  if not (needGtk or needTool or needGit) then begin
     result.ok := True;
     exit;
   end;
 
   if needGtk then need('GTK3 development files (libgtk-3.so, libgdk-3.so)');
   if needTool then need('C toolchain (libc.so, ld)');
+  if needGit then need('git');
 
   // one line per manager: <exe> <install verb> <gtk package> <toolchain package>
   var pkgs := '';
@@ -112,6 +115,8 @@ begin
     if needGtk then pkgs += ' gtk3';
     if needTool then pkgs += ' base-devel';
   end;
+  // the package is called git everywhere
+  if needGit then pkgs += ' git';
 
   if result.command <> '' then result.command += pkgs;
   // pkexec asks for the password through the session's polkit agent; without

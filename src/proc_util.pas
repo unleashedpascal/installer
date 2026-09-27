@@ -104,15 +104,22 @@ begin
   if fpcConfigDir <> '' then P.Environment.Add('PPC_CONFIG_PATH='+fpcConfigDir);
 end;
 
-// flush completed lines (split on LF; trailing partial stays in Buf)
+// flush completed lines (split on LF, CRLF or a bare CR; trailing partial stays in Buf).
+// a bare CR ends a line too so git's in-place progress updates arrive one by one
 procedure FlushLines(var Buf: string; OnLine: TLineCallback);
 begin
   if not Assigned(OnLine) then begin Buf := ''; Exit; end;
   repeat
-    var p := Pos(#10, Buf);
+    var p := 0;
+    for var i := 1 to Length(Buf) do if Buf[i] in [#10, #13] then begin
+      p := i;
+      break;
+    end;
     if p = 0 then Break;
+    // a CR at the very end may be the first half of a CRLF still in flight
+    if (Buf[p] = #13) and (p = Length(Buf)) then Break;
     var Line := Copy(Buf, 1, p-1);
-    if (Length(Line) > 0) and (Line[Length(Line)] = #13) then SetLength(Line, Length(Line)-1);
+    if (Buf[p] = #13) and (Buf[p+1] = #10) then inc(p);
     OnLine(Line);
     Delete(Buf, 1, p);
   until False;

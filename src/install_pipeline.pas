@@ -7,7 +7,7 @@ unit install_pipeline;
 interface
 
 uses
-  Classes, SysUtils;
+  Classes, SysUtils, proc_util;
 
 type
   TStringArray = array of string;
@@ -133,6 +133,12 @@ type
     // can be a different version than the 3.2.2 bootstrap, so we scan
     // lib/fpc/<ver>/ at runtime instead of hardcoding it)
     FHostFpcVersion: string;
+    // stdout of the last runGit call made with onGitCapture
+    fGitOut: string;
+    // git chosen by ensureGit for this run: the one on PATH, or the portable one under <install>\git
+    fGitExe: string;
+    // commits the source trees were checked out at; '' when the tree was not fetched in this run
+    fFpcHeadSha, fLazHeadSha: string;
     procedure SyncLog;
     procedure SyncProgress;
     procedure Log(const msg: string);
@@ -173,6 +179,12 @@ type
     function StepRebuildLazarusForAddons: Boolean;
     procedure UnregisterIdePackage(const PkgName: string);
     function StepDownloadLazarusSource: Boolean;
+    function gitUsable(const exe: string): Boolean;
+    function ensureGit: Boolean;
+    function runGit(const args: array of string; const workDir: string; onLine: TLineCallback): Integer;
+    procedure onGitLine(const line: string);
+    procedure onGitCapture(const line: string);
+    function fetchSource(const url, branch, hash, target, what: string; out headSha: string): Boolean;
     procedure WriteLazRevisionInc(const Sha: string);
     procedure DisableIdeRevisionUpdate;
     function StepBuildLazarus: Boolean;
@@ -182,7 +194,6 @@ type
     function StepGenerateLazarusConfig: Boolean;
     function writeLazarusCfg: Boolean;
     function StepCreateShortcuts: Boolean;
-    function ResolveLazarusRef: string;
     function LazarusDir: string;
     function LazarusPcp: string;
     function ComponentsExtraDir: string;
@@ -198,7 +209,6 @@ type
     procedure WriteMinimapConfig;
     procedure UnregisterMetaDarkStylePackages;
     function WriteConfigFile(const FilePath, Content: string): Boolean;
-    function ResolveFpcRef: string;
     function MakeWorkDir: string;
     function BootstrapBinDir: string;
     function HostFpcBinDir: string;     // <target>/<HostFpcBinSubdir>/
@@ -303,6 +313,11 @@ const
     'https://github.com/unleashedpascal/compiler/releases/download/bootstrappers-v1/binutils-2.28-x86_64-win64.zip';
   BINW64_SHA =
     'AE7C0D747C55EBB1760F8B4304BFA89BE78151594F5A21B5612DE252FE879E5A';
+
+  // portable git for the source fetch: MinGit from the Git for Windows project, republished as-is (no wrapper dir)
+  GIT_URL = 'https://github.com/unleashedpascal/compiler/releases/download/bootstrappers-v1/mingit-2.55.0.5-x86_64-win64.zip';
+  GIT_SHA = '56D7B226B7693196CFC71FEF26568F536C4A021AB6C37FF2DB4287BED908E96E';
+  GIT_ZIP_NAME = 'mingit-2.55.0.5-x86_64-win64.zip';
 {$endif}
 
   // Cross-toolchain mirrors hosted on the FPC bootstrap release.
@@ -373,7 +388,7 @@ const
 implementation
 
 uses
-  XMLConf, download_util, hash_util, zip_util, proc_util, shortcut_util, install_manifest, repo_url;
+  XMLConf, download_util, hash_util, zip_util, shortcut_util, install_manifest, repo_url;
 
 {$ifdef LINUX}
 // libc's setenv (FPC's BaseUnix doesn't surface fpsetenv in all 3.x versions;
@@ -641,12 +656,6 @@ begin
   var Pct: Integer;
   if ExtractLazbuildPercent(Line, Pct) then
     Progress(Pct, Trim(Copy(Line, Pos('%]', Line) + 2, MaxInt)));
-end;
-
-function TInstallThread.ResolveFpcRef: string;
-begin
-  Result := if (not FCfg.FpcLatest) and (FCfg.FpcHash <> '') then FCfg.FpcHash
-            else FCfg.FpcBranch;
 end;
 
 function TInstallThread.MakeWorkDir: string;
@@ -952,76 +961,9 @@ begin
   Result := True;
 end;
 
-// after extract, codeload leaves a single top-level dir like
-// "compiler-abc123def..." containing the actual source. find that one
-// directory in ParentDir; return '' if not exactly one dir there.
-function FindOnlyTopDir(const ParentDir: string): string;
-var
-  SR: TSearchRec;
-  Count: Integer;
-begin
-  Result := '';
-  Count := 0;
-  if FindFirst(IncludeTrailingPathDelimiter(ParentDir) + '*', faDirectory, SR) = 0 then begin
-    repeat
-      if (SR.Name = '.') or (SR.Name = '..') then Continue;
-      if (SR.Attr and faDirectory) = 0 then Continue;
-      Inc(Count);
-      if Count = 1 then Result := SR.Name
-      else Result := '';  // more than one - bail
-    until FindNext(SR) <> 0;
-    FindClose(SR);
-  end;
-  if Count <> 1 then Result := '';
-end;
-
 function TInstallThread.StepDownloadFpcSource: Boolean;
 begin
-  Result := False;
-  var Ref     := ResolveFpcRef;
-  // codeload accepts branch name, tag, full or short SHA in <ref>
-  var Url     := repoZipURLPrefix(fpcRepoURL)+Ref;
-  var ZipFile := IncludeTrailingPathDelimiter(GetTempDir) + 'unleashed-pascal-source.zip';
-  var Target  := MakeWorkDir;
-  // hidden temp parent so FindOnlyTopDir works regardless of siblings
-  // (fpc, fpc322, lazarus, ...) already living in TargetDir
-  var TempParent := IncludeTrailingPathDelimiter(FCfg.TargetDir) + '.fpcsrc-extract';
-
-  if DirectoryExists(Target) then removeDirVerbose(Target, 0, 10);
-  if DirectoryExists(TempParent) then
-    RemoveDir(TempParent);
-  ForceDirectories(TempParent);
-
-  Log('Downloading unleashed-pascal source (ref=' + Ref + ')');
-  Log('  URL: ' + Url);
-  Progress(0, 'Downloading source...');
-  if not DownloadFile(Url, ZipFile, @Progress) then begin
-    FErrorMsg := 'source download failed';
-    Exit;
-  end;
-
-  Log('Extracting source');
-  Progress(0, 'Extracting source...');
-  if not ExtractZip(ZipFile, TempParent, @Progress) then begin
-    FErrorMsg := 'source extract failed';
-    Exit;
-  end;
-  DeleteFile(ZipFile);
-
-  // codeload top dir is "compiler-<sha>"; rename it to "fpcsrc"
-  var ExtractedTopDir := FindOnlyTopDir(TempParent);
-  if ExtractedTopDir = '' then begin
-    FErrorMsg := 'unexpected source archive layout (no single top dir)';
-    Exit;
-  end;
-  if not RenameFile(IncludeTrailingPathDelimiter(TempParent) + ExtractedTopDir, Target) then begin
-    FErrorMsg := 'cannot rename ' + ExtractedTopDir + ' to fpcsrc';
-    Exit;
-  end;
-  RemoveDir(TempParent);
-
-  Log('Source ready: ' + Target);
-  Result := True;
+  result := fetchSource(fpcRepoURL, FCfg.FpcBranch, (if FCfg.FpcLatest then '' else FCfg.FpcHash), MakeWorkDir, 'unleashed-pascal', fFpcHeadSha);
 end;
 
 // one-shot dump of the inherited env vars that point FPC at another
@@ -1860,12 +1802,6 @@ begin
   // use by the i386-win32 target on this host.
 end;
 
-function TInstallThread.ResolveLazarusRef: string;
-begin
-  Result := if (not FCfg.LazLatest) and (FCfg.LazHash <> '') then FCfg.LazHash
-            else FCfg.LazBranch;
-end;
-
 function TInstallThread.LazarusDir: string;
 begin
   Result := IncludeTrailingPathDelimiter(FCfg.TargetDir) + 'lazarus';
@@ -1887,53 +1823,174 @@ end;
 
 function TInstallThread.StepDownloadLazarusSource: Boolean;
 begin
-  Result := False;
-  var Ref        := ResolveLazarusRef;
-  var Url        := repoZipURLPrefix(ideRepoURL)+Ref;
-  var ZipFile    := IncludeTrailingPathDelimiter(GetTempDir) + 'lazarus-source.zip';
-  var Target     := LazarusDir;
-  // a hidden temp parent so FindOnlyTopDir works regardless of what else
-  // sits next to the install dir (fpc, fpc322, src, ...)
-  var TempParent := IncludeTrailingPathDelimiter(FCfg.TargetDir) + '.lazarus-extract';
-
-  if DirectoryExists(Target) then removeDirVerbose(Target, 0, 10);
-  if DirectoryExists(TempParent) then
-    RemoveDir(TempParent);
-  ForceDirectories(TempParent);
-
-  Log('Downloading lazarus source (ref=' + Ref + ')');
-  Log('  URL: ' + Url);
-  Progress(0, 'Downloading lazarus source...');
-  if not DownloadFile(Url, ZipFile, @Progress) then begin
-    FErrorMsg := 'lazarus download failed';
-    Exit;
-  end;
-
-  Log('Extracting lazarus source');
-  Progress(0, 'Extracting lazarus source...');
-  if not ExtractZip(ZipFile, TempParent, @Progress) then begin
-    FErrorMsg := 'lazarus extract failed';
-    Exit;
-  end;
-  DeleteFile(ZipFile);
-
-  var ExtractedTop := FindOnlyTopDir(TempParent);
-  if ExtractedTop = '' then begin
-    FErrorMsg := 'unexpected lazarus archive layout (no single top dir)';
-    Exit;
-  end;
-  if not RenameFile(IncludeTrailingPathDelimiter(TempParent) + ExtractedTop, Target) then begin
-    FErrorMsg := 'cannot rename ' + ExtractedTop + ' to lazarus';
-    Exit;
-  end;
-  RemoveDir(TempParent);
-
-  // the zip carries no .git, so the IDE build cannot discover the commit
+  result := fetchSource(ideRepoURL, FCfg.LazBranch, (if FCfg.LazLatest then '' else FCfg.LazHash), LazarusDir, 'lazarus', fLazHeadSha);
+  if not result then exit;
+  // the tree carries no .git any more, so the IDE build cannot discover the commit
   // itself -- stamp it now, before anything compiles lazarus.pp
-  WriteLazRevisionInc(FCfg.LazSelectedSha);
+  WriteLazRevisionInc(fLazHeadSha);
+end;
 
-  Log('Lazarus source ready: ' + Target);
-  Result := True;
+// runs `exe --version`; 2.11 or newer (the first with --deepen) is taken as this run's git
+function TInstallThread.gitUsable(const exe: string): Boolean;
+begin
+  result := False;
+  fGitOut := '';
+  if RunStream(exe, ['--version'], '', '', @onGitCapture) <> 0 then exit;
+  // "git version 2.55.0.windows.5"
+  if Pos('git version ', fGitOut) <> 1 then exit;
+  var v := Copy(fGitOut, Length('git version ')+1, MaxInt)+'.';
+  var major := StrToIntDef(Copy(v, 1, Pos('.', v)-1), 0);
+  Delete(v, 1, Pos('.', v));
+  var minor := StrToIntDef(Copy(v, 1, Pos('.', v)-1), 0);
+  if (major < 2) or ((major = 2) and (minor < 11)) then begin
+    Log('  '+exe+' is '+fGitOut+', 2.11 or newer needed');
+    exit;
+  end;
+  fGitExe := exe;
+  Log('using '+exe+' ('+fGitOut+')');
+  result := True;
+end;
+
+// a git already on PATH wins; without one Windows unpacks the portable MinGit into <install>\git, fetched
+// like the bootstrap compiler and kept for the next run, Linux relies on the package the UI asked for
+function TInstallThread.ensureGit: Boolean;
+begin
+  result := True;
+  if fGitExe <> '' then exit;
+  if gitUsable('git') then exit;
+{$ifdef WINDOWS}
+  var portable := IncludeTrailingPathDelimiter(FCfg.TargetDir)+'git\cmd\git.exe';
+  if FileExists(portable) and gitUsable(portable) then exit;
+  result := False;
+  var zipFile := IncludeTrailingPathDelimiter(GetTempDir)+GIT_ZIP_NAME;
+  var gitDir  := IncludeTrailingPathDelimiter(FCfg.TargetDir)+'git';
+
+  Log('No usable git on PATH, downloading portable git');
+  Log('  URL: '+GIT_URL);
+  Progress(0, 'Downloading git...');
+  if not DownloadFile(GIT_URL, zipFile, @Progress) then begin
+    FErrorMsg := 'git download failed';
+    exit;
+  end;
+
+  Log('Verifying SHA256...');
+  Progress(-1, 'Verifying SHA256');
+  var actualHash := SHA256OfFile(zipFile);
+  if actualHash <> GIT_SHA then begin
+    Log('  expected: '+GIT_SHA);
+    Log('  actual:   '+actualHash);
+    FErrorMsg := 'git SHA256 mismatch';
+    exit;
+  end;
+  Log('  OK');
+
+  Log('Extracting git to '+gitDir);
+  Progress(0, 'Extracting git...');
+  if not ExtractZip(zipFile, gitDir, @Progress) then begin
+    FErrorMsg := 'git extract failed';
+    exit;
+  end;
+  DeleteFile(zipFile);
+  if not gitUsable(portable) then begin
+    FErrorMsg := 'git does not run after extract';
+    exit;
+  end;
+  result := True;
+{$endif}
+{$ifdef LINUX}
+  FErrorMsg := 'git not found in PATH (install: apt install git)';
+  result := False;
+{$endif}
+end;
+
+function TInstallThread.runGit(const args: array of string; const workDir: string; onLine: TLineCallback): Integer;
+begin
+  result := RunStream(fGitExe, args, workDir, '', onLine);
+end;
+
+// git reports transfer progress as in-place updates ("Receiving objects:  45% (...)"); those drive the
+// progress bar and stay out of the log, everything else is logged
+procedure TInstallThread.onGitLine(const line: string);
+begin
+  var pct := Pos('%', line);
+  if (pct > 0) and (Pos(': ', line) > 0) and (Pos(': ', line) < pct) then begin
+    var n := pct-1;
+    while (n > 0) and (line[n] in ['0'..'9']) do dec(n);
+    var value := StrToIntDef(Copy(line, n+1, pct-n-1), -1);
+    if value >= 0 then begin
+      Progress(value, Trim(line));
+      exit;
+    end;
+  end;
+  if Trim(line) <> '' then Log('  '+line);
+end;
+
+procedure TInstallThread.onGitCapture(const line: string);
+begin
+  if Trim(line) <> '' then fGitOut := Trim(line);
+end;
+
+// shallow fetch of one commit into target: the head of branch, or hash when given. a full SHA is fetched
+// directly; a prefix cannot be, so the branch is deepened until the commit shows up. history is not kept:
+// .git goes away after the checkout, the tree is a plain source drop like before
+function TInstallThread.fetchSource(const url, branch, hash, target, what: string; out headSha: string): Boolean;
+const
+  DEEPEN_STEP = 200;
+  DEEPEN_MAX  = 10;
+
+  function fail(const msg: string): Boolean;
+  begin
+    FErrorMsg := msg;
+    result := False;
+  end;
+
+  function hasCommit(const dir, id: string): Boolean;
+  begin
+    result := RunSilent(fGitExe, ['-C', dir, 'rev-parse', '--verify', '--quiet', id+'^{commit}']) = 0;
+  end;
+
+begin
+  headSha := '';
+  if not ensureGit then exit(False);
+  if DirectoryExists(target) then removeDirVerbose(target, 0, 10);
+  ForceDirectories(target);
+
+  var ref := if hash <> '' then hash else branch;
+  Log('Fetching '+what+' source (ref='+ref+')');
+  Log('  URL: '+url);
+  Progress(-1, 'Fetching '+what+' source...');
+  if runGit(['init', '-q', target], '', @onGitLine) <> 0 then exit(fail('git init failed'));
+  // sources stay byte-identical to the repo, MinGit defaults autocrlf on
+  if runGit(['config', 'core.autocrlf', 'false'], target, @onGitLine) <> 0 then exit(fail('git config failed'));
+  if runGit(['remote', 'add', 'origin', url], target, @onGitLine) <> 0 then exit(fail('git remote add failed'));
+
+  var fullSha := Length(hash) = 40;
+  var fetchRef := if fullSha then hash else branch;
+  if runGit(['fetch', '--depth', '1', '--progress', 'origin', fetchRef], target, @onGitLine) <> 0 then exit(fail('git fetch failed'));
+
+  var checkoutRef := 'FETCH_HEAD';
+  if (hash <> '') and (not fullSha) then begin
+    // walk the branch back in slices until the prefix resolves
+    var i := 0;
+    while (not hasCommit(target, hash)) do begin
+      if i = DEEPEN_MAX then exit(fail('commit '+hash+' not found within the last '+IntToStr(DEEPEN_MAX*DEEPEN_STEP)+' commits of '+branch+'; pin the full SHA'));
+      inc(i);
+      Log('  commit '+hash+' not within the last '+IntToStr(i*DEEPEN_STEP)+' commits of '+branch+', fetching more');
+      if runGit(['fetch', '--deepen', IntToStr(DEEPEN_STEP), '--progress', 'origin', branch], target, @onGitLine) <> 0 then exit(fail('git fetch failed'));
+    end;
+    checkoutRef := hash;
+  end;
+
+  Progress(-1, 'Checking out '+what+' source...');
+  if runGit(['checkout', '-q', checkoutRef], target, @onGitLine) <> 0 then exit(fail('git checkout failed'));
+  fGitOut := '';
+  if runGit(['rev-parse', 'HEAD'], target, @onGitCapture) <> 0 then exit(fail('git rev-parse failed'));
+  headSha := LowerCase(fGitOut);
+  Log('  checked out '+headSha);
+
+  RemoveDir(IncludeTrailingPathDelimiter(target)+'.git');
+  Log(what+' source ready: '+target);
+  result := True;
 end;
 
 // write <lazarus>\ide\revision.inc so the compiled IDE reports the
@@ -3532,10 +3589,10 @@ begin
     // record what's now on disk so a later run can compare
     Manifest.Present     := True;
     Manifest.FpcBranch   := FCfg.FpcBranch;
-    Manifest.FpcSha      := FCfg.FpcSelectedSha;
+    Manifest.FpcSha      := if fFpcHeadSha <> '' then fFpcHeadSha else FCfg.FpcSelectedSha;
     Manifest.FpcLatest   := FCfg.FpcLatest;
     Manifest.LazBranch   := FCfg.LazBranch;
-    Manifest.LazSha      := FCfg.LazSelectedSha;
+    Manifest.LazSha      := if fLazHeadSha <> '' then fLazHeadSha else FCfg.LazSelectedSha;
     Manifest.LazLatest   := FCfg.LazLatest;
     // Cross-target detection by RTL units presence (the multi-target
     // ppcrossx64 / ppcross386 binaries are reused, so units dir is the

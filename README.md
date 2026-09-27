@@ -14,7 +14,7 @@ All three are published to the `nightly` release; pick whichever suits your dist
 
 Pick a target directory, optionally pin commits, tick the cross compilers you want, click **Install**. The installer then:
 
-1. Downloads a bootstrap FPC and the Unleashed Pascal compiler + Unleashed Pascal IDE source.
+1. Downloads a bootstrap FPC (plus a portable git on Windows) and fetches the Unleashed Pascal compiler + Unleashed Pascal IDE sources with git.
 2. Builds the native compiler for the host OS, then any cross targets you ticked.
 3. Builds the IDE and any optional addons you ticked.
 4. Drops a desktop shortcut to the IDE, wired to a per-install IDE config so the install stays isolated from anything else on the system.
@@ -39,16 +39,16 @@ The native compile and the GTK3 build of the IDE need a working toolchain on the
 
 ```sh
 # Debian / Ubuntu / Mint
-sudo apt install -y curl build-essential libgtk-3-dev xdg-utils
+sudo apt install -y curl git build-essential libgtk-3-dev xdg-utils
 
 # Fedora
-sudo dnf install -y curl make gcc binutils glibc-devel gtk3-devel xdg-utils
+sudo dnf install -y curl git make gcc binutils glibc-devel gtk3-devel xdg-utils
 
 # openSUSE
-sudo zypper --non-interactive install curl make gcc binutils glibc-devel gtk3-devel xdg-utils
+sudo zypper --non-interactive install curl git make gcc binutils glibc-devel gtk3-devel xdg-utils
 
 # Arch / Manjaro
-sudo pacman -S --needed curl base-devel gtk3 xdg-utils
+sudo pacman -S --needed curl git base-devel gtk3 xdg-utils
 ```
 
 Tested baseline: glibc 2.28+ (Ubuntu 18.04+, Debian 10+, Fedora 29+).

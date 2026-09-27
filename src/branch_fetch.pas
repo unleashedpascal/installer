@@ -7,20 +7,19 @@ unit branch_fetch;
 interface
 
 uses
-  Classes, SysUtils;
+  Classes, SysUtils, repo_url;
 
 type
   TBranchFetchThread = class(TThread)
   private
-    FOwner, FRepo: string;
+    FURL, FRepo: string;
     FBranches: TStringList;
     FError: string;
   protected
     procedure Execute; override;
   public
-    constructor Create(const AOwner, ARepo: string; AOnDone: TNotifyEvent);
+    constructor Create(const AURL: string; AOnDone: TNotifyEvent);
     destructor Destroy; override;
-    property Owner: string read FOwner;
     property Repo: string read FRepo;
     // safe to read on main thread inside OnTerminate
     property Branches: TStringList read FBranches;
@@ -30,20 +29,18 @@ type
 implementation
 
 uses
-  fpjson, jsonparser
-  {$ifdef WINDOWS}, Windows, WinInet{$endif}
-  {$ifdef LINUX}, process{$endif};
+  {$ifdef WINDOWS} Windows, WinInet {$endif}
+  {$ifdef LINUX} process {$endif};
 
 const
   AGENT      = 'UnleashedInstaller/1.0';
-  HEADERS    = 'Accept: application/vnd.github+json'#13#10;
   CHUNK_SIZE = 4096;
 
-constructor TBranchFetchThread.Create(const AOwner, ARepo: string; AOnDone: TNotifyEvent);
+constructor TBranchFetchThread.Create(const AURL: string; AOnDone: TNotifyEvent);
 begin
   inherited Create(True);
-  FOwner := AOwner;
-  FRepo := ARepo;
+  FURL := AURL;
+  FRepo := repoName(AURL);
   FBranches := TStringList.Create;
   // OnTerminate runs on main thread; FreeOnTerminate frees us after it returns -- callback must NOT free us
   FreeOnTerminate := True;
@@ -69,7 +66,7 @@ begin
   var Session := InternetOpen(AGENT, INTERNET_OPEN_TYPE_PRECONFIG, nil, nil, 0);
   if Session = nil then Exit;
   try
-    var Connection := InternetOpenUrl(Session, PChar(URL), PChar(HEADERS), Length(HEADERS),
+    var Connection := InternetOpenUrl(Session, PChar(URL), nil, 0,
       INTERNET_FLAG_NO_UI or INTERNET_FLAG_RELOAD or INTERNET_FLAG_NO_CACHE_WRITE or INTERNET_FLAG_KEEP_CONNECTION, 0);
     if Connection = nil then Exit;
     try
@@ -110,7 +107,6 @@ begin
   P.Parameters.Add('--retry-delay');   P.Parameters.Add('1');
   P.Parameters.Add('--retry-connrefused');
   P.Parameters.Add('-A');              P.Parameters.Add(AGENT);
-  P.Parameters.Add('-H');              P.Parameters.Add('Accept: application/vnd.github+json');
   P.Parameters.Add(URL);
   P.Options := [poUsePipes];
 
@@ -120,7 +116,7 @@ begin
     on E: Exception do raise Exception.Create('curl not found in PATH (install: apt install curl): '+E.Message);
   end;
 
-  // drain both pipes; stdout = JSON, stderr = curl error text on -S
+  // drain both pipes; stdout = refs, stderr = curl error text on -S
   var StdoutBuf := autofree TMemoryStream.Create;
   var StderrBuf: string := '';
   while P.Running or (P.Output.NumBytesAvailable > 0) or (P.Stderr.NumBytesAvailable > 0) do begin
@@ -148,27 +144,42 @@ begin
 end;
 {$endif}
 
+// pkt-line body of info/refs: 4 hex digits of length (0000 = flush), then '<sha> <ref>', the first ref
+// followed by NUL and the server capabilities; only refs/heads/* matter here
+procedure parseRefs(const body: string; branches: TStrings);
+begin
+  var p := 1;
+  while p+4 <= Length(body) do begin
+    var len := StrToIntDef('$'+Copy(body, p, 4), 0);
+    if len = 0 then begin
+      inc(p, 4);
+      continue;
+    end;
+    var line := Copy(body, p+4, len-4);
+    inc(p, len);
+    var nul := Pos(#0, line);
+    if nul > 0 then SetLength(line, nul-1);
+    line := Trim(line);
+    var sp := Pos(' ', line);
+    if (sp <> 41) or (line[1] = '#') then continue;
+    var ref := Copy(line, sp+1, MaxInt);
+    if Pos('refs/heads/', ref) = 1 then branches.Add(Copy(ref, Length('refs/heads/')+1, MaxInt)+'='+LowerCase(Copy(line, 1, 40)));
+  end;
+end;
+
 procedure TBranchFetchThread.Execute;
 begin
   try
-    var Url := Format('https://api.github.com/repos/%s/%s/branches?per_page=100', [FOwner, FRepo]);
+    var Url := repoRefsURL(FURL);
     var Body: string;
     if not HttpGet(Url, Body) then begin
       FError := 'HTTP GET failed for '+Url;
       Exit;
     end;
 
-    var J := autofree GetJSON(Body);
-    if not (J is TJSONArray) then begin
-      FError := 'unexpected response: '+Copy(Body, 1, 200);
-      Exit;
-    end;
-    var Arr := TJSONArray(J);
-    // store as "name=sha" so callers can list Names[i] and look up Values[branch] in O(1)
-    for var i := 0 to Arr.Count-1 do begin
-      var Obj := Arr.Objects[i];
-      if Obj <> nil then FBranches.Add(Obj.Get('name', '')+'='+TJSONObject(Obj.Find('commit')).Get('sha', ''));
-    end;
+    // stored as "name=sha" so callers can list Names[i] and look up Values[branch] in O(1)
+    parseRefs(Body, FBranches);
+    if FBranches.Count = 0 then FError := 'no branches in response: '+Copy(Body, 1, 200);
   except
     on E: Exception do FError := E.ClassName+': '+E.Message;
   end;

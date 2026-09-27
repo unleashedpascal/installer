@@ -966,8 +966,8 @@ begin
   end;
 
   Log('Fetching branches from '+fpcRepoURL+' and '+ideRepoURL);
-  TBranchFetchThread.Create(repoOwner(fpcRepoURL), repoName(fpcRepoURL), @OnUnleashedDone);
-  TBranchFetchThread.Create(repoOwner(ideRepoURL), repoName(ideRepoURL), @OnLazarusDone);
+  TBranchFetchThread.Create(fpcRepoURL, @OnUnleashedDone);
+  TBranchFetchThread.Create(ideRepoURL, @OnLazarusDone);
 end;
 
 // failed-fetch fallback: build 'name=sha' from bare names, attaching the cached HEAD SHA only to 'main'
@@ -1292,7 +1292,7 @@ procedure TMainForm.MenuExpertReposClick(Sender: TObject);
   begin
     result := '';
     if url = '' then exit('empty');
-    if (repoOwner(url) = '') or (repoName(url) = '') then exit('expected https://github.com/<owner>/<repo>');
+    if (Pos('://', url) = 0) or (repoName(url) = '') then exit('expected https://<host>/<path-to-repo>');
   end;
 
 begin
