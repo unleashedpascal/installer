@@ -1,0 +1,20 @@
+name: Dispatch devel nightly
+
+# github runs `schedule` on the default branch only, so the nightly for the
+# devel branch is started from here
+on:
+  workflow_dispatch:
+  schedule:
+    # an hour behind this branch's own nightly
+    - cron: '0 3 * * *'
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Run CI on devel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref devel
