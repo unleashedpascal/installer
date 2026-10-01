@@ -10,12 +10,15 @@ on:
   schedule:
     # Run after the Lazarus Unleashed nightly so both FPC and Lazarus
     # bundles are fresh (FPC: 00:00 UTC, Lazarus: 01:00 UTC).
-    # Only the default branch honours this; pixie is dispatched from there.
+    # Only the default branch honours this; other branches are dispatched
+    # from there.
     - cron: '0 2 * * *'
 
 env:
-  # pixie ships its own release so it never touches the one main publishes
-  NIGHTLY_TAG: nightly-pixie
+  # every branch ships its own release, so one branch's release step never
+  # deletes another's: main publishes `nightly`, any other `nightly-<branch>`
+  NIGHTLY_TAG: ${{ github.ref_name == 'main' && 'nightly' || format('nightly-{0}', github.ref_name) }}
+  NIGHTLY_TITLE: ${{ github.ref_name == 'main' && 'Unleashed Pascal Installer nightly' || format('Unleashed Pascal Installer nightly ({0})', github.ref_name) }}
 
 jobs:
   check-for-changes:
@@ -103,7 +106,7 @@ jobs:
           rev=$(grep -oP '<RevisionNr Value="\K[0-9]+'     src/installer.lpi || echo 0)
           ver="${maj}.${min}.${rev}.${GITHUB_RUN_NUMBER}"
           {
-            echo "Unleashed Installer PixieUI nightly build"
+            echo "$NIGHTLY_TITLE build"
             echo
             echo "Generated from commit: $GITHUB_SHA"
             echo "Build time: $ts"
@@ -118,7 +121,7 @@ jobs:
           gh release create "$NIGHTLY_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Unleashed Installer PixieUI nightly" \
+            --title "$NIGHTLY_TITLE" \
             --notes-file release-body.txt \
             --prerelease \
             installer_win64_x86_64.exe \
