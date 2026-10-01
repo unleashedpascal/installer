@@ -179,6 +179,7 @@ type
     procedure onGitCapture(const line: string);
     function fetchSource(const url, branch, hash, target, what: string; out headSha: string): Boolean;
     procedure WriteLazRevisionInc(const Sha: string);
+    procedure writeFPCRevisionInc(const sha: string);
     procedure DisableIdeRevisionUpdate;
     function StepBuildLazarus: Boolean;
     function stepBuildLHelp: Boolean;
@@ -934,6 +935,21 @@ end;
 function TInstallThread.StepDownloadFpcSource: Boolean;
 begin
   result := fetchSource(FCfg.FpcRepoURL, FCfg.FpcBranch, (if FCfg.FpcLatest then '' else FCfg.FpcHash), MakeWorkDir, 'unleashed-pascal', fFpcHeadSha);
+  if not result then exit;
+  writeFPCRevisionInc(fFpcHeadSha);
+end;
+
+// the compiler Makefile builds the commit into the compiler ident only when compiler/revision.inc
+// exists, and the fetched tree has no .git to take it from
+procedure TInstallThread.writeFPCRevisionInc(const sha: string);
+begin
+  var dir := IncludeTrailingPathDelimiter(MakeWorkDir)+'compiler';
+  if (sha = '') or (not DirectoryExists(dir)) then exit;
+  var rev := Copy(LowerCase(sha), 1, 7);
+  var lines := autofree TStringList.Create;
+  lines.Add(''''+rev+'''');
+  lines.SaveToFile(dir+DirectorySeparator+'revision.inc');
+  Log('FPC revision stamped: '+rev);
 end;
 
 // one-shot dump of the inherited env vars that point FPC at another
@@ -3206,6 +3222,8 @@ begin
       if not StepDownloadFpcSource then Exit;
       if not StepBuildFpcNative then Exit;
     end;
+    // cross compilers below build from the kept tree; installs made before the stamping existed lack it
+    if hasFpcExe then writeFPCRevisionInc(Manifest.FpcSha);
 
     // fpc.cfg has to exist before any cross step that wants to patch it
     // (Linux cross appends a target-specific section). Pulled ahead of
