@@ -67,11 +67,6 @@ type
     // when True, pipeline appends every Log() line to
     // <TargetDir>\installer.log (truncated at start of each run).
     SaveLog: Boolean;
-    // seed size of the IDE Options dialog, in the 96-dpi units the IDE
-    // stores dialog layouts in. Measured in the UI layer because the
-    // pipeline runs off the main thread and must not touch Screen.
-    OptionsDlgWidth:  Integer;
-    OptionsDlgHeight: Integer;
   end;
 
   TInstallLogEvent      = procedure(const msg: string) of object;
@@ -97,7 +92,7 @@ type
     isLazSrc,           // 77..80   download + extract lazarus
     isLazMakelazbuild,  // 80..84   make lazbuild prereqs
     isLazComponents,    // 84..85   download + extract optional addon zips
-    isLazPackages,      // 85..89   N x lazbuild --add-package
+    isLazPackages,      // 85..89   lazbuild --add-release-packages + addons
     isLazIde,           // 89..96   lazbuild --build-ide
     isLazConfig,        // 96..97   write env opts + ack files
     isHelp,             // 97..98   lhelp viewer build + CHM docs
@@ -412,9 +407,6 @@ const
 const
   // baked minimal Lazarus environmentoptions.xml. Version 112 / Lazarus
   // 4.99 matches the current main of unleashedpascal/ide.
-  // ActiveDesktop="default docked" makes the IDE start in single-window
-  // dock layout (anchordockingdsgn handles the runtime when the package
-  // is installed - which we do via lazbuild --add-package).
   // InitialFPCSrcRescanDone skips the slow first-launch scan over <fpcsrc>.
   ENV_OPTIONS_TEMPLATE: string =
     '<?xml version="1.0" encoding="UTF-8"?>'#13#10 +
@@ -430,106 +422,7 @@ const
     '    <InitialFPCSrcRescanDone Value="True"/>'#13#10 +
     '    <AutoSave OpenLastProjectAtStart="False"/>'#13#10 +
     '  </EnvironmentOptions>'#13#10 +
-    // explicit Desktop1 + Desktop2 so the IDE has named entries to
-    // activate; DockMaster ties Desktop2 to anchordocking. layout
-    // details (window positions etc.) are filled in on first save.
-    // Each desktop carries a seed size for the IDE Options dialog: the
-    // IDE only applies a stored size when it is larger than 10x10, and
-    // rewrites the entry from the actual window when the dialog closes,
-    // so a user resize sticks from then on.
-    '  <Desktops Count="2" ActiveDesktop="default docked">'#13#10 +
-    '    <Desktop1 Name="default">'#13#10 +
-    '%DLGSEED%' +
-    '    </Desktop1>'#13#10 +
-    '    <Desktop2 Name="default docked" DockMaster="TIDEAnchorDockMaster">'#13#10 +
-    '%DLGSEED%' +
-    '    </Desktop2>'#13#10 +
-    '  </Desktops>'#13#10 +
     '</CONFIG>'#13#10;
-
-  // <Dialogs> block seeded into both desktops; sizes are 96-dpi units
-  OPTIONS_DLG_SEED: string =
-    '      <Dialogs Count="1">'#13#10 +
-    '        <Dialog1>'#13#10 +
-    '          <Name Value="TIDEOptionsDialog"/>'#13#10 +
-    '          <Size Width="%DLGW%" Height="%DLGH%"/>'#13#10 +
-    '        </Dialog1>'#13#10 +
-    '      </Dialogs>'#13#10;
-
-  // pre-acknowledge the "Enable anchor docking?" prompt. without this
-  // the IDE shows a blocking dialog on first run.
-  ANCHOR_DOCKING_OPTIONS: string =
-    '<?xml version="1.0" encoding="UTF-8"?>'#13#10 +
-    '<CONFIG>'#13#10 +
-    '  <DoneAskUserEnableAnchorDock Value="True"/>'#13#10 +
-    '</CONFIG>'#13#10;
-
-  // pre-acknowledge the "Enable docked form designer?" prompt.
-  DOCKED_FORM_EDITOR_OPTIONS: string =
-    '<?xml version="1.0" encoding="UTF-8"?>'#13#10 +
-    '<CONFIG>'#13#10 +
-    '  <DoneAskUserEnableDockedDesigner Value="True"/>'#13#10 +
-    '</CONFIG>'#13#10;
-
-  // FpDebug is the user fork's preferred backend (modern, internal, no
-  // external gdb.exe required). without this file the IDE pops the
-  // "Configure Lazarus IDE" wizard on first launch with a red "!" on
-  // the Debugger tab. UID is a fixed GUID matching unleashed21's
-  // reference install.
-  DEBUGGER_OPTIONS: string =
-    '<?xml version="1.0" encoding="UTF-8"?>'#13#10 +
-    '<CONFIG>'#13#10 +
-    '  <Debugger Version="1">'#13#10 +
-    '    <Backends Version="1">'#13#10 +
-    '      <Config ConfigName="FpDebug" ConfigClass="TFpDebugDebugger" Active="True" UID="{65D78958-7ADA-40EE-B528-5FFCB08E4544}"/>'#13#10 +
-    '    </Backends>'#13#10 +
-    '  </Debugger>'#13#10 +
-    '</CONFIG>'#13#10;
-
-  // Editor defaults that differ from stock Lazarus. mbaSelectColumn puts
-  // block selection on the middle mouse button (stock: paste). Written
-  // only when the file is absent so a re-install keeps the user's fonts
-  // and colour scheme.
-  // Key1/Shift1 are the raw VK code and the ctrl=1/shift=2/alt=4 bitmask
-  // the IDE stores; Default="False" is what makes it override the built-in
-  // shortcut. jcfCurrentEditorWindow is the code formatter, which claims
-  // ctrl+D by default - it is cleared so the duplicate-line binding is
-  // unambiguous.
-  EDITOR_OPTIONS: string =
-    '<?xml version="1.0" encoding="UTF-8"?>'#13#10 +
-    '<CONFIG>'#13#10 +
-    '  <EditorOptions Version="13">'#13#10 +
-    '    <Misc MultiCaretOnColumnSelect="True"/>'#13#10 +
-    '    <Display EditorFont="%FONT%" EditorFontSize="10" ExtraLineSpacing="0" ExtraCharSpacing="0" DisableAntialiasing="False"/>'#13#10 +
-    '    <Mouse>'#13#10 +
-    '      <Default Version="1" TextMiddleClick="mbaSelectColumn"/>'#13#10 +
-    '    </Mouse>'#13#10 +
-    '    <KeyMapping Scheme="default">'#13#10 +
-    '      <default Count="3">'#13#10 +
-    '        <Version Value="6"/>'#13#10 +
-    '        <Item1 Name="Duplicate line or lines in selection">'#13#10 +
-    '          <KeyA Default="False" Key1="68" Shift1="1"/>'#13#10 +
-    '        </Item1>'#13#10 +
-    '        <Item2 Name="jcfCurrentEditorWindow">'#13#10 +
-    '          <KeyA Default="False" Key1="0" Shift1="0"/>'#13#10 +
-    '        </Item2>'#13#10 +
-    '        <Item3 Name="Clean up and build">'#13#10 +
-    '          <KeyA Default="False" Key1="120" Shift1="3"/>'#13#10 +
-    '        </Item3>'#13#10 +
-    '      </default>'#13#10 +
-    '    </KeyMapping>'#13#10 +
-    '  </EditorOptions>'#13#10 +
-    '</CONFIG>'#13#10;
-
-  // default editor font per host; the IDE falls back to a system font
-  // when the name does not resolve, which would silently undo the setting
-  EDITOR_FONT: string =
-{$ifdef WINDOWS}
-    'Consolas';
-{$endif}
-{$ifdef LINUX}
-    'DejaVu Sans Mono';
-{$endif}
 
 constructor TInstallThread.Create(const Cfg: TInstallConfig;
   ALog: TInstallLogEvent; AProgress: TInstallProgressEvent;
@@ -1993,22 +1886,6 @@ begin
 end;
 
 const
-  // Packages installed into the IDE statically. Base packages first
-  // reduces dep churn (lazbuild resolves but is faster on a clean
-  // queue). Paths relative to <lazarus>\.
-  LAZ_BASE_PACKAGES: array[0..19] of string = (
-    'components\lazcontrols\design\lazcontroldsgn.lpk', 'components\datetimectrls\datetimectrls.lpk', 'components\datetimectrls\design\datetimectrlsdsgn.lpk', 'components\sdf\sdflaz.lpk',
-    'components\codetools\ide\cody.lpk', 'components\projecttemplates\projtemplates.lpk', 'components\sqldb\sqldblaz.lpk', 'components\memds\memdslaz.lpk',
-    'components\tdbf\dbflaz.lpk', 'components\fpcunit\ide\fpcunitide.lpk', 'components\fpcunit\testinsight\laztestinsight.lpk', 'components\daemon\lazdaemon.lpk',
-    'components\leakview\leakview.lpk', 'components\tachart\tachartlazaruspkg.lpk', 'components\jcf2\IdePlugin\lazarus\jcfidelazarus.lpk', 'components\chmhelp\packages\help\lhelpcontrolpkg.lpk',
-    'components\chmhelp\packages\idehelp\chmhelppkg.lpk', 'components\instantfpc\instantfpclaz.lpk', 'components\externhelp\externhelp.lpk', 'components\synedit\design\syneditdsgn.lpk');
-
-  // Docked IDE. anchordocking added as link only; its dsgn package
-  // pulls it in for IDE static linkage.
-  LAZ_DOCKED_LINK_ONLY = 'components\anchordocking\anchordocking.lpk';
-  LAZ_DOCKED_PACKAGES: array[0..1] of string = (
-    'components\anchordocking\design\anchordockingdsgn.lpk', 'components\dockedformeditor\dockedformeditor.lpk');
-
   // Optional CPU-View add-on lives outside the lazarus checkout to keep
   // the lazarus repo small (sources are downloaded on demand from the
   // components-v1 release into <install>/components_extra/). FWHexView
@@ -2358,25 +2235,11 @@ begin
     Exit;
   end;
 
-  // 2. register every package with our isolated config_lazarus. lazbuild
-  //    appends each to staticpackages.inc + idemake.cfg in the pcp;
-  //    --build-ide later picks them up.
+  // 2. register the release packages, the set every default install has, with our isolated config_lazarus;
+  //    lazbuild appends them to staticpackages.inc + idemake.cfg in the pcp, --build-ide later picks them up
   SetStage(isLazPackages);
-  Log('Registering base packages (' + IntToStr(Length(LAZ_BASE_PACKAGES)) + ')');
-  for var i := Low(LAZ_BASE_PACKAGES) to High(LAZ_BASE_PACKAGES) do begin
-    if not AddPackage(LAZ_BASE_PACKAGES[i]) then Exit;
-    // smooth-fill the package-registration slice as each lpk lands
-    Progress(Round((i + 1) * 100 / (Length(LAZ_BASE_PACKAGES) +
-      Length(LAZ_DOCKED_PACKAGES) + 1)), ExtractFileName(LAZ_BASE_PACKAGES[i]));
-  end;
-
-  Log('Registering docked-IDE packages');
-  // anchordocking is a runtime package; the IDE statically links its
-  // *dsgn variant which depends on the runtime. add the runtime as a
-  // link only so it ends up in package list but not in staticpackages.inc.
-  if not AddPackage(LAZ_DOCKED_LINK_ONLY, True) then Exit;
-  for var i := Low(LAZ_DOCKED_PACKAGES) to High(LAZ_DOCKED_PACKAGES) do
-    if not AddPackage(LAZ_DOCKED_PACKAGES[i]) then Exit;
+  Log('Registering release packages');
+  if not RunLazbuild(['--add-release-packages'], 'lazbuild --add-release-packages') then exit;
 
   if FCfg.InstallCPUView then begin
     Log('Registering CPU-View addon (FWHexView + CPUView)');
@@ -2699,34 +2562,9 @@ begin
   Xml := StringReplace(Xml, '%MAKE%',     MakePath,                            [rfReplaceAll]);
   Xml := StringReplace(Xml, '%PROJECTS%', ProjectsDir,                         [rfReplaceAll]);
 
-  var DlgSeed := OPTIONS_DLG_SEED;
-  DlgSeed := StringReplace(DlgSeed, '%DLGW%', IntToStr(FCfg.OptionsDlgWidth),  [rfReplaceAll]);
-  DlgSeed := StringReplace(DlgSeed, '%DLGH%', IntToStr(FCfg.OptionsDlgHeight), [rfReplaceAll]);
-  Xml := StringReplace(Xml, '%DLGSEED%', DlgSeed, [rfReplaceAll]);
-
   Log('Writing ' + LazarusPcp + '\environmentoptions.xml');
   if not WriteConfigFile(IncludeTrailingPathDelimiter(LazarusPcp) +
     'environmentoptions.xml', Xml) then Exit;
-
-  Log('Writing ' + LazarusPcp + '\anchordockingoptions.xml');
-  if not WriteConfigFile(IncludeTrailingPathDelimiter(LazarusPcp) +
-    'anchordockingoptions.xml', ANCHOR_DOCKING_OPTIONS) then Exit;
-
-  Log('Writing ' + LazarusPcp + '\dockedformeditoroptions.xml');
-  if not WriteConfigFile(IncludeTrailingPathDelimiter(LazarusPcp) +
-    'dockedformeditoroptions.xml', DOCKED_FORM_EDITOR_OPTIONS) then Exit;
-
-  Log('Writing ' + LazarusPcp + '\debuggeroptions.xml');
-  if not WriteConfigFile(IncludeTrailingPathDelimiter(LazarusPcp) +
-    'debuggeroptions.xml', DEBUGGER_OPTIONS) then Exit;
-
-  var EditorOptPath := IncludeTrailingPathDelimiter(LazarusPcp) + 'editoroptions.xml';
-  if FileExists(EditorOptPath) then
-    Log('editoroptions.xml already present, leaving it alone')
-  else begin
-    Log('Writing ' + LazarusPcp + '\editoroptions.xml');
-    if not WriteConfigFile(EditorOptPath, StringReplace(EDITOR_OPTIONS, '%FONT%', EDITOR_FONT, [rfReplaceAll])) then Exit;
-  end;
 
   if not writeLazarusCfg then Exit;
   Result := True;
