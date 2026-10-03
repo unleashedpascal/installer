@@ -130,6 +130,8 @@ type
     fGitExe: string;
     // commits the source trees were checked out at; '' when the tree was not fetched in this run
     fFpcHeadSha, fLazHeadSha: string;
+    // short commit handed to every compiler make as REVSTR
+    fFpcRev: string;
     procedure SyncLog;
     procedure SyncProgress;
     procedure Log(const msg: string);
@@ -852,6 +854,7 @@ begin
   var dir := IncludeTrailingPathDelimiter(MakeWorkDir)+'compiler';
   if (sha = '') or (not DirectoryExists(dir)) then exit;
   var rev := Copy(LowerCase(sha), 1, 7);
+  fFpcRev := rev;
   var lines := autofree TStringList.Create;
   lines.Add(''''+rev+'''');
   lines.SaveToFile(dir+DirectorySeparator+'revision.inc');
@@ -937,14 +940,19 @@ begin
     if FileExists(TmpFile) then SysUtils.DeleteFile(TmpFile);
   end;
 {$endif}
+  // REVSTR stops the Makefile's own lookup: without .git it asks svnversion, which answers
+  // 'Unversioned directory' for a plain tree, and that string would replace the stamped revision.inc
+  var makeArgs: TStringArray := [];
+  for var i := Low(Args) to High(Args) do makeArgs := makeArgs+[Args[i]];
+  if fFpcRev <> '' then makeArgs := makeArgs+['REVSTR='+fFpcRev];
   var ArgList := '';
-  for var i := Low(Args) to High(Args) do begin
+  for var i := Low(makeArgs) to High(makeArgs) do begin
     if ArgList <> '' then ArgList := ArgList + ' ';
-    ArgList := ArgList + Args[i];
+    ArgList := ArgList+makeArgs[i];
   end;
   Log('Running: make ' + ArgList);
   Progress(-1, StepLabel);
-  var ExitCode := RunStream(MakeExe, Args, MakeWorkDir, PathPrefix, @OnMakeLine);
+  var ExitCode := RunStream(MakeExe, makeArgs, MakeWorkDir, PathPrefix, @OnMakeLine);
   Result := ExitCode = 0;
   if not Result then begin
     FErrorMsg := StepLabel + ' failed (make exit=' + IntToStr(ExitCode) + ')';
