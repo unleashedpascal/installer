@@ -67,6 +67,9 @@ type
     // when True, pipeline appends every Log() line to
     // <TargetDir>\installer.log (truncated at start of each run).
     SaveLog: Boolean;
+    // the UI's Reinstall button: the compiler and the IDE are built again from the source trees fetched
+    // last time (refetched only when missing), instead of being skipped as already present
+    reinstall: Boolean;
   end;
 
   TInstallLogEvent      = procedure(const msg: string) of object;
@@ -830,6 +833,13 @@ end;
 
 function TInstallThread.StepDownloadFpcSource: Boolean;
 begin
+  // a reinstall rebuilds the tree fetched last time; the manifest holds its commit
+  if (FCfg.reinstall) and (FileExists(IncludeTrailingPathDelimiter(MakeWorkDir)+'Makefile')) then begin
+    Log('Reusing the fetched compiler source in '+MakeWorkDir);
+    fFpcHeadSha := ReadManifest(FCfg.TargetDir).FpcSha;
+    writeFPCRevisionInc(fFpcHeadSha);
+    exit(true);
+  end;
   result := fetchSource(FCfg.FpcRepoURL, FCfg.FpcBranch, (if FCfg.FpcLatest then '' else FCfg.FpcHash), MakeWorkDir, 'unleashed-pascal', fFpcHeadSha);
   if not result then exit;
   writeFPCRevisionInc(fFpcHeadSha);
@@ -1705,6 +1715,12 @@ end;
 
 function TInstallThread.StepDownloadLazarusSource: Boolean;
 begin
+  if (FCfg.reinstall) and (FileExists(IncludeTrailingPathDelimiter(LazarusDir)+'Makefile')) then begin
+    Log('Reusing the fetched IDE source in '+LazarusDir);
+    fLazHeadSha := ReadManifest(FCfg.TargetDir).LazSha;
+    WriteLazRevisionInc(fLazHeadSha);
+    exit(true);
+  end;
   result := fetchSource(FCfg.LazRepoURL, FCfg.LazBranch, (if FCfg.LazLatest then '' else FCfg.LazHash), LazarusDir, 'lazarus', fLazHeadSha);
   if not result then exit;
   // the tree carries no .git any more, so the IDE build cannot discover the commit
@@ -2230,6 +2246,16 @@ begin
   // 1. build lazbuild + LCL + minimum prereqs that the upcoming
   //    --add-package calls will need to compile each package against.
   SetStage(isLazMakelazbuild);
+  // a reinstall builds on the tree of the previous build, so its units go first
+  if FCfg.reinstall then begin
+    Progress(-1, 'make distclean');
+    var cleanExit := RunStream(MakeExe, ['distclean', 'PP='+FpcExe]+CfgOpt, LazarusDir, PathPrefix, @OnMakeLine);
+    if cleanExit <> 0 then begin
+      FErrorMsg := 'lazarus distclean failed (make exit='+IntToStr(cleanExit)+')';
+      Log('  '+FErrorMsg);
+      exit;
+    end;
+  end;
   Progress(-1, 'make lazbuild (LCL + lazbuild, ~3 min)');
   var ExitCode := RunStream(MakeExe, ['lazbuild', 'PP=' + FpcExe] + CfgOpt, LazarusDir, PathPrefix, @OnMakeLine);
   if ExitCode <> 0 then begin
@@ -3009,9 +3035,15 @@ begin
       end;
     end;
 
+    // reinstall keeps the fetched trees and drops only the compiler install dir, so make install starts clean;
+    // the IDE is rebuilt in place after make distclean
+    var reinstallFpc := (FCfg.reinstall) and (FCfg.InstallFpc) and (hasFpcExe);
+    var reinstallLaz := (FCfg.reinstall) and (FCfg.InstallLazarus) and (hasLazExe);
+    if (reinstallFpc) or (reinstallLaz) then Log('reinstall requested: rebuilding from the fetched sources');
+
     // clean gets its own stage: the trees are huge and their removal runs minutes, so each dir
     // gets an equal slice of the stage bar and removeDirVerbose streams per-subdir log lines
-    if wantFpcRefresh or wantLazRefresh then begin
+    if (wantFpcRefresh) or (wantLazRefresh) or (reinstallFpc) then begin
       SetStage(isCleanPrev);
       var CleanDirs := autofree TStringList.Create;
       if wantFpcRefresh then begin
@@ -3019,11 +3051,12 @@ begin
         CleanDirs.Add(TargetPrefix+'fpcsrc');
         CleanDirs.Add(TargetPrefix+'cross');
       end;
+      if reinstallFpc then CleanDirs.Add(TargetPrefix+'fpc');
       if wantLazRefresh then CleanDirs.Add(TargetPrefix+'lazarus');
       for var i := 0 to CleanDirs.Count-1 do
         removeDirVerbose(CleanDirs[i], (i*100) div CleanDirs.Count, ((i+1)*100) div CleanDirs.Count);
     end;
-    if wantFpcRefresh then begin
+    if (wantFpcRefresh) or (reinstallFpc) then begin
       hasFpcExe := False;
       hasCrossW32 := False;
       hasCrossWasm := False;
@@ -3035,7 +3068,7 @@ begin
 {$endif}
       hasCrossLinux32 := False;
     end;
-    if wantLazRefresh then hasLazExe := False;
+    if (wantLazRefresh) or (reinstallLaz) then hasLazExe := False;
 
     // bootstrap is needed for any make-based step; only re-fetch if missing
     SetStage(isBootstrap);
@@ -3051,7 +3084,7 @@ begin
     end;
 
     // FPC source + native build - skip if FPC binary already there.
-    // user must manually wipe <fpc> to force a rebuild.
+    // the Reinstall button forces a rebuild
     if hasFpcExe then
       Log('native FPC already built at <target>\fpc, skipping source + make all')
     else
