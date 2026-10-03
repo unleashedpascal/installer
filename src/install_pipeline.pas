@@ -223,6 +223,8 @@ type
 function fpcBinDirForTarget(const targetDir: string): string;
 
 const
+  // first byte of a log line the UI highlights; stripped before the line reaches the file or the list
+  LOG_BANNER = #1;
 {$ifdef WINDOWS}
   // portable extract of fpc-3.2.2.i386-win32.exe (Inno Setup), unpacked
   // off-line to skip registry, PATH, file association, shortcut side effects.
@@ -450,7 +452,8 @@ end;
 procedure TInstallThread.Log(const msg: string);
 begin
   if FLogStream <> nil then begin
-    var line: AnsiString := AnsiString(FormatDateTime('hh:nn:ss', Now) + '# ' + msg + LineEnding);
+    var text := if (msg <> '') and (msg[1] = LOG_BANNER) then Copy(msg, 2, MaxInt) else msg;
+    var line: AnsiString := AnsiString(FormatDateTime('hh:nn:ss', Now)+'# '+text+LineEnding);
     if Length(line) > 0 then
       FLogStream.WriteBuffer(line[1], Length(line));
   end;
@@ -2622,26 +2625,18 @@ begin
     Log('Shortcut placed in ' + Dir);
   end;
 
-  // marker phrase 'IMPORTANT' is picked up by main_form's owner-draw and
-  // rendered with a yellow background + bold black text. Variant by which
-  // shortcuts were created so the user knows exactly where to click.
-  if madeDesktop or madeFolder then begin
-    var TgtDir := IncludeTrailingPathDelimiter(FCfg.TargetDir);
-    Log('');
-    Log('============================================================');
-    if madeDesktop and madeFolder then begin
-      Log('IMPORTANT: start the IDE from the desktop shortcut');
-      Log('IMPORTANT: "' + Name + '", or the copy inside the');
-      Log('IMPORTANT: install folder ' + TgtDir + '.');
-    end else if madeDesktop then begin
-      Log('IMPORTANT: start the IDE from the desktop shortcut');
-      Log('IMPORTANT: "' + Name + '".');
-    end else begin
-      Log('IMPORTANT: start the IDE from the shortcut inside the');
-      Log('IMPORTANT: install folder ' + TgtDir + '.');
-    end;
-    Log('============================================================');
-  end;
+  // LOG_BANNER lines are drawn by main_form as bold black on yellow;
+  // shortcut lines only for the shortcuts that are actually there
+  var tgtDir := IncludeTrailingPathDelimiter(FCfg.TargetDir);
+  Log('============================================================');
+  if (madeDesktop) and (madeFolder) then Log(LOG_BANNER+'Start the IDE from the desktop shortcut "'+Name+'" or from its copy in '+tgtDir)
+  else if madeDesktop then Log(LOG_BANNER+'Start the IDE from the desktop shortcut "'+Name+'"')
+  else if madeFolder then Log(LOG_BANNER+'Start the IDE from the shortcut "'+Name+'" in '+tgtDir);
+{$ifdef LINUX}
+  if madeDesktop then Log(LOG_BANNER+'It is also listed in the applications menu, under Programming');
+{$endif}
+  Log(LOG_BANNER+(if (madeDesktop) or (madeFolder) then 'Or run it directly: ' else 'Start the IDE by running ')+TargetExe);
+  Log('============================================================');
   Result := True;
 end;
 
