@@ -372,6 +372,8 @@ begin
   FStoredDefaults := readSettings;
 
   {$ifdef LINUX}
+  // the .lfm caption is the Windows one; on Linux the same checkbox also puts the IDE into the applications menu
+  CheckBoxDesktopShortcut.Caption := 'Create desktop shortcut and applications menu entry';
   var IconStream := autofree TMemoryStream.Create;
   IconStream.WriteBuffer(INSTALLER_PNG, SizeOf(INSTALLER_PNG));
   IconStream.Position := 0;
@@ -1186,8 +1188,10 @@ end;
 
 procedure TMainForm.Log(const msg: string);
 begin
-  var fullText := FormatDateTime('hh:nn:ss', Now)+'# '+msg;
-  ListBoxLog.Items.Add(fullText);
+  var banner := (msg <> '') and (msg[1] = LOG_BANNER);
+  var fullText := FormatDateTime('hh:nn:ss', Now)+'# '+(if banner then Copy(msg, 2, MaxInt) else msg);
+  // Objects flags the line for the yellow owner-draw, so the text stays clean for copy
+  ListBoxLog.Items.AddObject(fullText, TObject(PtrInt(banner)));
 
   // grow horizontal scrollbar so wide make/lazbuild lines can scroll into view; +24 for per-line padding
   var lineWidth := ListBoxLog.Canvas.TextWidth(fullText)+24;
@@ -1351,7 +1355,7 @@ begin
     cv.Brush.Color := clHighlight;
     cv.Font.Color := clHighlightText;
     cv.Font.Style := [];
-  end else if Pos('IMPORTANT', s) > 0 then begin
+  end else if ListBoxLog.Items.Objects[Index] <> nil then begin
     // banner: bold black on yellow
     cv.Brush.Color := clYellow;
     cv.Font.Color := clBlack;

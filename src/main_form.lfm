@@ -225,7 +225,7 @@ object MainForm: TMainForm
               Top = 0
               Width = 619
               Align = alTop
-              Caption = 'Create desktop (or Home folder on Linux) shortcut'
+              Caption = 'Create desktop shortcut'
               Checked = True
               State = cbChecked
               TabOrder = 0
