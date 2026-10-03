@@ -182,6 +182,8 @@ type
     FFolderError: Boolean;
     // True when IDE install is on but neither shortcut picked; gates ButtonInstall + shows red LabelLaunchWarn
     FShortcutError: Boolean;
+    // true while the Install button reads Reinstall; the pipeline then rebuilds instead of skipping what is present
+    fReinstall: Boolean;
     // re-entrancy guard for RefreshTargetState; state-B reset writes to controls whose OnChange re-enters here
     FRefreshingTarget: Boolean;
     // installer_settings.ini as read at startup; used as the fresh-install defaults
@@ -654,6 +656,7 @@ begin
 
   // optimistic reset; each branch re-sets the flag as needed
   FFolderError := False;
+  fReinstall := False;
   LabelMode.Font.Color := clWindowText;
   UpdateShortcutError;
 
@@ -780,8 +783,9 @@ begin
     LabelMode.Caption := 'Update available:'+updates;
     ButtonInstall.Caption := 'Update';
   end else if parts <> '' then begin
-    LabelMode.Caption := 'Existing install detected ('+parts+') - Install will overwrite';
+    LabelMode.Caption := 'Existing install detected ('+parts+'): Reinstall rebuilds it from the fetched sources';
     ButtonInstall.Caption := 'Reinstall';
+    fReinstall := True;
   end else begin
     // manifest present but no FPC/Lazarus binary -- prior install died after writing manifest. Treat as resumable
     LabelMode.Caption := 'Partial install detected (manifest only) - Install will resume';
@@ -1581,6 +1585,7 @@ begin
   cfg.FpcSelectedSha := ResolveSelectedFpcSha;
   cfg.LazSelectedSha := ResolveSelectedLazSha;
   cfg.SaveLog        := CheckBoxSaveLog.Checked;
+  cfg.reinstall := fReinstall;
   Log('--- install requested ---');
   Log('target dir: '+cfg.TargetDir);
   if cfg.InstallFpc then Log('install compiler: yes ('+cfg.FpcBranch+')') else Log('install compiler: no');
