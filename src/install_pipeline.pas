@@ -2585,9 +2585,8 @@ function TInstallThread.StepCreateShortcuts: Boolean;
 begin
   Result := False;
   var TargetExe := IncludeTrailingPathDelimiter(LazarusDir) + 'lazarus' + ExeExt;
-  // --pcp loads our isolated config_lazarus instead of the default per-user
-  // dir (%LOCALAPPDATA%\lazarus on Windows, ~/.lazarus on Linux)
-  var Args := '--pcp="' + LazarusPcp + '"';
+  // no arguments: lazarus.cfg next to the binary carries --pcp
+  var Args := '';
   var Name := 'Launch Unleashed IDE';
   var Dir  := ExcludeTrailingPathDelimiter(FCfg.TargetDir);
   var madeDesktop := False;
