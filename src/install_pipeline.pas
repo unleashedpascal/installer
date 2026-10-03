@@ -2593,7 +2593,10 @@ begin
   var madeDesktop := False;
   var madeFolder  := False;
 
-  if FCfg.MakeDesktopShortcut then begin
+  if (FCfg.MakeDesktopShortcut) and (desktopShortcutExists(TargetExe)) then begin
+    Log('Desktop shortcut already exists, leaving as is');
+    madeDesktop := True;
+  end else if FCfg.MakeDesktopShortcut then begin
     Log('Creating desktop shortcut: ' + Name);
     Progress(-1, 'Creating desktop shortcut');
     if not CreateDesktopShortcut(TargetExe, Args, Name) then begin
@@ -2605,7 +2608,10 @@ begin
     Log('Shortcut placed on the desktop.');
   end;
 
-  if FCfg.MakeFolderShortcut then begin
+  if (FCfg.MakeFolderShortcut) and (folderShortcutExists(Dir, TargetExe)) then begin
+    Log('Install-folder shortcut already exists, leaving as is');
+    madeFolder := True;
+  end else if FCfg.MakeFolderShortcut then begin
     Log('Creating install-folder shortcut in ' + Dir);
     Progress(-1, 'Creating install-folder shortcut');
     if not CreateFolderShortcut(Dir, TargetExe, Args, Name) then begin

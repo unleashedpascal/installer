@@ -7,10 +7,14 @@ unit shortcut_util;
 interface
 
 // desktop shortcut. Windows: .lnk via IShellLinkW; Linux: .desktop in ~/Desktop/ + ~/.local/share/applications/
-// name taken => ' (N)' is appended, N counting up from 2, so an existing shortcut is never overwritten
+// name taken => ' (N)' is appended, N counting up from 2, so an existing shortcut is never overwritten; on Linux each dir is numbered on its own
 function CreateDesktopShortcut(const TargetPath, Args, ShortcutName: string): Boolean;
 // shortcut placed directly inside Dir (the install folder). Windows: Dir\Name.lnk; Linux: Dir/<sanitized>.desktop
 function CreateFolderShortcut(const Dir, TargetPath, Args, ShortcutName: string): Boolean;
+// true when the desktop already holds a shortcut launching targetPath, under any file name (the user may have renamed it)
+function desktopShortcutExists(const targetPath: string): boolean;
+// same check for shortcuts placed directly inside dir
+function folderShortcutExists(const dir, targetPath: string): boolean;
 
 implementation
 
@@ -75,6 +79,44 @@ begin
   ForceDirectories(Dir);
   Result := WriteLnk(IncludeTrailingPathDelimiter(Dir)+ShortcutName+'.lnk', TargetPath, Args);
 end;
+
+// true when any .lnk directly inside dir points at targetPath; SLGP_RAWPATH returns the stored path without resolving it
+function dirHasLnkTo(const dir, targetPath: string): boolean;
+var sr: TSearchRec;
+begin
+  result := false;
+  if FAILED(CoInitialize(nil)) then exit;
+  try
+    var link: IShellLinkW := CreateComObject(CLSID_ShellLink) as IShellLinkW;
+    var persist: IPersistFile := link as IPersistFile;
+    var want := LowerCase(targetPath);
+    var buf: array[MAX_PATH] of WideChar;
+    var base := IncludeTrailingPathDelimiter(dir);
+    if FindFirst(base+'*.lnk', faAnyFile, sr) = 0 then try
+      repeat
+        var wLnk: WideString := UTF8Decode(base+sr.Name);
+        if FAILED(persist.Load(PWideChar(wLnk), STGM_READ)) then Continue;
+        if FAILED(link.GetPath(@buf[0], MAX_PATH, nil, SLGP_RAWPATH)) then Continue;
+        if LowerCase(UTF8Encode(WideString(PWideChar(@buf[0])))) = want then exit(true);
+      until FindNext(sr) <> 0;
+    finally
+      SysUtils.FindClose(sr);
+    end;
+  finally
+    CoUninitialize;
+  end;
+end;
+
+function desktopShortcutExists(const targetPath: string): boolean;
+begin
+  var desktopDir := GetDesktopPath;
+  result := (desktopDir <> '') and (dirHasLnkTo(desktopDir, targetPath));
+end;
+
+function folderShortcutExists(const dir, targetPath: string): boolean;
+begin
+  result := (dir <> '') and (dirHasLnkTo(dir, targetPath));
+end;
 {$endif}
 
 {$ifdef LINUX}
@@ -126,36 +168,85 @@ begin
   if Result = '' then Result := 'unleashed-pascal-ide';
 end;
 
-function CreateDesktopShortcut(const TargetPath, Args, ShortcutName: string): Boolean;
-begin
-  Result := False;
-  var Home := GetEnvironmentVariable('HOME');
-  if Home = '' then Exit;
-  var DesktopDir := IncludeTrailingPathDelimiter(Home)+'Desktop'+DirectorySeparator;
-  var MenuDir    := IncludeTrailingPathDelimiter(Home)+'.local/share/applications/';
-  var DisplayName := ShortcutName;
-  var FileBase := SanitizeName(DisplayName);
-  var N := 2;
-  while FileExists(DesktopDir+FileBase+'.desktop') or FileExists(MenuDir+FileBase+'.desktop') do begin
-    DisplayName := ShortcutName+' ('+IntToStr(N)+')';
-    FileBase := SanitizeName(DisplayName);
-    Inc(N);
-  end;
-  var Body := BuildDesktopEntry(TargetPath, Args, DisplayName);
-  var DesktopPath := DesktopDir+FileBase+'.desktop';
-  var MenuPath    := MenuDir+FileBase+'.desktop';
-  // best-effort: write both. Succeed if either lands
-  var WroteDesktop := WriteDesktopFile(DesktopPath, Body);
-  var WroteMenu    := WriteDesktopFile(MenuPath, Body);
-  Result := WroteDesktop or WroteMenu;
-end;
-
 function CreateFolderShortcut(const Dir, TargetPath, Args, ShortcutName: string): Boolean;
 begin
   Result := False;
   if Dir = '' then Exit;
   var Body := BuildDesktopEntry(TargetPath, Args, ShortcutName);
   Result := WriteDesktopFile(IncludeTrailingPathDelimiter(Dir)+SanitizeName(ShortcutName)+'.desktop', Body);
+end;
+
+// true when any .desktop directly inside dir has an Exec= line launching targetPath (bare or followed by arguments)
+function dirHasDesktopEntryTo(const dir, targetPath: string): boolean;
+var sr: TSearchRec;
+begin
+  result := false;
+  var base := IncludeTrailingPathDelimiter(dir);
+  if FindFirst(base+'*.desktop', faAnyFile, sr) = 0 then try
+    var lines := autofree TStringList.Create;
+    repeat
+      try
+        lines.LoadFromFile(base+sr.Name);
+      except
+        Continue;
+      end;
+      var execLine := lines.Values['Exec'];
+      if (execLine = targetPath) or (Pos(targetPath+' ', execLine) = 1) then exit(true);
+    until FindNext(sr) <> 0;
+  finally
+    SysUtils.FindClose(sr);
+  end;
+end;
+
+function desktopDir: string;
+begin
+  result := '';
+  var home := GetEnvironmentVariable('HOME');
+  if home <> '' then result := IncludeTrailingPathDelimiter(home)+'Desktop/';
+end;
+
+function menuDir: string;
+begin
+  result := '';
+  var home := GetEnvironmentVariable('HOME');
+  if home <> '' then result := IncludeTrailingPathDelimiter(home)+'.local/share/applications/';
+end;
+
+// one entry per dir: an entry already launching targetPath there is left alone, otherwise a new one is written,
+// named after shortcutName with ' (N)' appended while that name is taken in this dir (and only this dir)
+function ensureDesktopEntry(const dir, targetPath, args, shortcutName: string): boolean;
+begin
+  if dirHasDesktopEntryTo(dir, targetPath) then exit(true);
+  var displayName := shortcutName;
+  var fileBase := SanitizeName(displayName);
+  var n := 2;
+  while FileExists(dir+fileBase+'.desktop') do begin
+    displayName := shortcutName+' ('+IntToStr(n)+')';
+    fileBase := SanitizeName(displayName);
+    Inc(n);
+  end;
+  result := WriteDesktopFile(dir+fileBase+'.desktop', BuildDesktopEntry(targetPath, args, displayName));
+end;
+
+function CreateDesktopShortcut(const TargetPath, Args, ShortcutName: string): Boolean;
+begin
+  Result := False;
+  if desktopDir = '' then exit;
+  // best-effort: write both. Succeed if either lands
+  var wroteDesktop := ensureDesktopEntry(desktopDir, TargetPath, Args, ShortcutName);
+  var wroteMenu := ensureDesktopEntry(menuDir, TargetPath, Args, ShortcutName);
+  result := (wroteDesktop) or (wroteMenu);
+end;
+
+// both places must hold an entry, so a missing one is recreated by CreateDesktopShortcut without touching the other
+function desktopShortcutExists(const targetPath: string): boolean;
+begin
+  result := (desktopDir <> '') and (dirHasDesktopEntryTo(desktopDir, targetPath)) and (dirHasDesktopEntryTo(menuDir, targetPath));
+end;
+
+function folderShortcutExists(const dir, targetPath: string): boolean;
+begin
+  result := (dir <> '') and (dirHasDesktopEntryTo(dir, targetPath));
 end;
 {$endif}
 
