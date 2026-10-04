@@ -132,6 +132,8 @@ type
     fFpcHeadSha, fLazHeadSha: string;
     // short commit handed to every compiler make as REVSTR
     fFpcRev: string;
+    // stdout of `lazbuild --help`, collected by onLazbuildHelpLine
+    fLazbuildHelp: string;
     procedure SyncLog;
     procedure SyncProgress;
     procedure Log(const msg: string);
@@ -193,6 +195,8 @@ type
     function ComponentsExtraDir: string;
     function RunLazbuild(const Args: array of string;
       const StepLabel: string): Boolean;
+    procedure onLazbuildHelpLine(const line: string);
+    function lazbuildKnowsReleasePackages: Boolean;
     function AddPackage(const LpkRel: string; LinkOnly: Boolean = False): Boolean;
     function AddPackageAbs(const LpkAbs: string; LinkOnly: Boolean = False): Boolean;
     function RegisterCPUViewPackages: Boolean;
@@ -1993,6 +1997,26 @@ begin
   end;
 end;
 
+procedure TInstallThread.onLazbuildHelpLine(const line: string);
+begin
+  fLazbuildHelp += line + LineEnding;
+end;
+
+// `--add-release-packages` exists in the Unleashed IDE sources since 2026-10;
+// a lazbuild built from an older tree rejects it with "Invalid option at
+// position 7", which names neither the option nor the cause
+function TInstallThread.lazbuildKnowsReleasePackages: Boolean;
+begin
+  var lazbuildExe := IncludeTrailingPathDelimiter(LazarusDir) + 'lazbuild' + ExeExt;
+  fLazbuildHelp := '';
+  RunStream(lazbuildExe, ['--help'], LazarusDir, '', @onLazbuildHelpLine);
+  result := Pos('--add-release-packages', fLazbuildHelp) > 0;
+  if result then exit;
+  FErrorMsg := 'the IDE sources at ' + FCfg.LazBranch + '@' + Copy(fLazHeadSha, 1, 7) +
+               ' predate lazbuild --add-release-packages, pick a newer IDE commit';
+  Log('  ' + FErrorMsg);
+end;
+
 function TInstallThread.AddPackage(const LpkRel: string;
   LinkOnly: Boolean): Boolean;
 begin
@@ -2275,6 +2299,7 @@ begin
   // 2. register the release packages, the set every default install has, with our isolated config_lazarus;
   //    lazbuild appends them to staticpackages.inc + idemake.cfg in the pcp, --build-ide later picks them up
   SetStage(isLazPackages);
+  if not lazbuildKnowsReleasePackages then exit;
   Log('Registering release packages');
   if not RunLazbuild(['--add-release-packages'], 'lazbuild --add-release-packages') then exit;
 
