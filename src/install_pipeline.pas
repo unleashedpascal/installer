@@ -188,6 +188,7 @@ type
     function stepInstallHelpFiles: Boolean;
     procedure runHelpSteps;
     function StepGenerateLazarusConfig: Boolean;
+    function builtLazarusVersion: string;
     function writeLazarusCfg: Boolean;
     function StepCreateShortcuts: Boolean;
     function LazarusDir: string;
@@ -416,14 +417,15 @@ const
     'building lazbuild + LCL', 'fetching addon components', 'registering IDE packages', 'building IDE', 'writing IDE config', 'help', 'desktop shortcut', 'done');
 
 const
-  // baked minimal Lazarus environmentoptions.xml. Version 112 / Lazarus
-  // 4.99 matches the current main of unleashedpascal/ide.
+  // baked minimal Lazarus environmentoptions.xml. Version 112 is the file
+  // format; %LAZVER% is the version of the IDE just built, read from its
+  // sources, so the first start shows no upgrade question.
   // InitialFPCSrcRescanDone skips the slow first-launch scan over <fpcsrc>.
   ENV_OPTIONS_TEMPLATE: string =
     '<?xml version="1.0" encoding="UTF-8"?>'#13#10 +
     '<CONFIG>'#13#10 +
     '  <EnvironmentOptions>'#13#10 +
-    '    <Version Lazarus="4.99" Value="112"/>'#13#10 +
+    '    <Version Lazarus="%LAZVER%" Value="112"/>'#13#10 +
     '    <Language ID="en"/>'#13#10 +
     '    <LazarusDirectory Value="%LAZ%"/>'#13#10 +
     '    <CompilerFilename Value="%FPC%"/>'#13#10 +
@@ -2599,6 +2601,29 @@ begin
   end;
 end;
 
+// major.minor of the IDE in the fetched sources (laz_major / laz_minor in
+// lazversion.pas); the last version known here when the file cannot be read
+function TInstallThread.builtLazarusVersion: string;
+begin
+  result := '5.99';
+  var path := IncludeTrailingPathDelimiter(LazarusDir)+'components'+DirectorySeparator+'lazutils'+DirectorySeparator+'lazversion.pas';
+  if not FileExists(path) then exit;
+  var lines := autofree TStringList.Create;
+  try
+    lines.LoadFromFile(path);
+  except
+    exit;
+  end;
+  var major := '';
+  var minor := '';
+  for var line in lines do begin
+    var t := StringReplace(Trim(line), ' ', '', [rfReplaceAll]);
+    if t.StartsWith('laz_major=') then major := Copy(t, 11, Pos(';', t)-11)
+    else if t.StartsWith('laz_minor=') then minor := Copy(t, 11, Pos(';', t)-11);
+  end;
+  if (StrToIntDef(major, -1) >= 0) and (StrToIntDef(minor, -1) >= 0) then result := major+'.'+minor;
+end;
+
 function TInstallThread.StepGenerateLazarusConfig: Boolean;
 begin
   Result := False;
@@ -2618,6 +2643,7 @@ begin
 {$ifdef LINUX}
   var MakePath := 'make';
 {$endif}
+  Xml := StringReplace(Xml, '%LAZVER%',   builtLazarusVersion,                 [rfReplaceAll]);
   Xml := StringReplace(Xml, '%LAZ%',      LazarusDir,                          [rfReplaceAll]);
   Xml := StringReplace(Xml, '%FPC%',      HostFpcDriver,                       [rfReplaceAll]);
   Xml := StringReplace(Xml, '%FPCSRC%',   MakeWorkDir,                         [rfReplaceAll]);
