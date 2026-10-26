@@ -2650,9 +2650,23 @@ begin
   Xml := StringReplace(Xml, '%MAKE%',     MakePath,                            [rfReplaceAll]);
   Xml := StringReplace(Xml, '%PROJECTS%', ProjectsDir,                         [rfReplaceAll]);
 
-  Log('Writing ' + LazarusPcp + '\environmentoptions.xml');
-  if not WriteConfigFile(IncludeTrailingPathDelimiter(LazarusPcp) +
-    'environmentoptions.xml', Xml) then Exit;
+  var xmlPath := IncludeTrailingPathDelimiter(LazarusPcp) + 'environmentoptions.xml';
+  if FileExists(xmlPath) then begin
+    // an update keeps what the user set up in the IDE (recent projects,
+    // desktops, debugger); only what points into the installation changes
+    Log('Updating ' + xmlPath);
+    var Cfg := autofree TXMLConfig.Create(nil);
+    Cfg.Filename := xmlPath;
+    Cfg.SetValue('EnvironmentOptions/Version/Lazarus', builtLazarusVersion);
+    Cfg.SetValue('EnvironmentOptions/LazarusDirectory/Value', LazarusDir);
+    Cfg.SetValue('EnvironmentOptions/CompilerFilename/Value', HostFpcDriver);
+    Cfg.SetValue('EnvironmentOptions/FPCSourceDirectory/Value', MakeWorkDir);
+    Cfg.SetValue('EnvironmentOptions/MakeFilename/Value', MakePath);
+    Cfg.Flush;
+  end else begin
+    Log('Writing ' + xmlPath);
+    if not WriteConfigFile(xmlPath, Xml) then Exit;
+  end;
 
   if not writeLazarusCfg then Exit;
   Result := True;
