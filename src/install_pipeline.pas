@@ -166,6 +166,8 @@ type
     function StepRemoveCrossLinux32FromLinux: Boolean;
     function DownloadAndVerify(const Url, Sha, DestZip, StepLabel: string): Boolean;
     function UnpackLinuxCross(const Tag, BinUrl, BinSha, LibUrl, LibSha, BinDir, LibDir: string): Boolean;
+    function unpackLinuxCrossLibs(const tag, libURL, libSHA, libDir: string): Boolean;
+    function refreshLinuxCrossLibs(const tag, libURL, libSHA, libDir: string): Boolean;
     function LinuxCommonMakeArgs(const TargetCpu, BinDir, LibDir, BinPrefix: string): TStringArray;
     function PatchFpcCfgCrossSection(const TargetOs, TargetCpu, BinDir, LibDir, BinPrefix: string; Add: Boolean): Boolean;
     procedure StepM3Cleanup;
@@ -320,23 +322,25 @@ const
 
   // Cross-toolchain mirrors hosted on the FPC bootstrap release.
   // _BIN: cross-binutils (Win32 PE producing Linux ELF). _LIB: glibc
-  // runtime + Ubuntu 18.04 shared objects for full LCL widget-set.
+  // runtime + Ubuntu 20.04 shared objects for full LCL widget-set.
   CROSS_LINUX64_BIN_URL =
     'https://github.com/unleashedpascal/compiler/releases/download/bootstrappers-v1/Linux_AMD64_Linux_V241.zip';
   CROSS_LINUX64_BIN_SHA =
     'BE7F575C4383C98F4A14D22CD939C58C9D8A458B8E3FC2125348ECA5E9826733';
   CROSS_LINUX64_LIB_URL =
-    'https://github.com/unleashedpascal/compiler/releases/download/bootstrappers-v1/Linux_AMD64_Ubuntu_1804.zip';
+    'https://github.com/unleashedpascal/compiler/releases/download/bootstrappers-v1/Linux_AMD64_Ubuntu_2004.zip';
   CROSS_LINUX64_LIB_SHA =
-    '674B1CB4A21E0CE7000B848CB75E201CD2E317C8E71833C76D9EAD05FD7DF221';
+    '14B776FDDE13F8F77654D2848DF40639FB04FBFA79277B40F66C8D1F12239B5B';
   CROSS_LINUX32_BIN_URL =
     'https://github.com/unleashedpascal/compiler/releases/download/bootstrappers-v1/Linux_i386_Linux_V241.zip';
   CROSS_LINUX32_BIN_SHA =
     '119459D71FB54ECBA5760BDE0D96AA4455C16C7AC9A5F8CC3E2C0CC02B8E48E3';
   CROSS_LINUX32_LIB_URL =
-    'https://github.com/unleashedpascal/compiler/releases/download/bootstrappers-v1/Linux_i386_Ubuntu_1804.zip';
+    'https://github.com/unleashedpascal/compiler/releases/download/bootstrappers-v1/Linux_i386_Ubuntu_2004.zip';
   CROSS_LINUX32_LIB_SHA =
-    'A09F3168FFCBBF21AD15A3FD0A6A88C0DD4123FA6FF47B18C63701A7A05728EA';
+    'E2E7E7ED570335BBD8BFFB5EDC84A92B9C86B772F2F1F2637E8A0450FE9FAA44';
+  // written into a cross lib dir, holds the URL of the lib zip it was filled from
+  LIBPACK_MARKER = 'libpack.txt';
 
   // Optional Lazarus IDE add-on packages distributed in a separate
   // components-v1 release. Two upstream projects shipped here:
@@ -1308,16 +1312,37 @@ begin
   end;
   DeleteFile(BinZip);
 
-  var LibZip := IncludeTrailingPathDelimiter(GetTempDir) + 'cross-' + Tag + '-lib.zip';
-  if not DownloadAndVerify(LibUrl, LibSha, LibZip, 'cross-libs ' + Tag) then Exit;
-  Progress(0, 'Extracting libs...');
-  if not ExtractZip(LibZip, LibDir, @Progress) then begin
-    FErrorMsg := 'cross-libs ' + Tag + ' extract failed';
-    Exit;
-  end;
-  DeleteFile(LibZip);
+  Result := unpackLinuxCrossLibs(Tag, LibUrl, LibSha, LibDir);
+end;
 
-  Result := True;
+// the marker names the lib zip the dir was filled from, so a later installer with a newer pack can tell
+function TInstallThread.unpackLinuxCrossLibs(const tag, libURL, libSHA, libDir: string): Boolean;
+begin
+  result := false;
+  var libZip := IncludeTrailingPathDelimiter(GetTempDir)+'cross-'+tag+'-lib.zip';
+  if not DownloadAndVerify(libURL, libSHA, libZip, 'cross-libs '+tag) then exit;
+  Progress(0, 'Extracting libs...');
+  if not ExtractZip(libZip, libDir, @Progress) then begin
+    FErrorMsg := 'cross-libs '+tag+' extract failed';
+    exit;
+  end;
+  DeleteFile(libZip);
+  result := WriteConfigFile(IncludeTrailingPathDelimiter(libDir)+LIBPACK_MARKER, libURL);
+end;
+
+// a cross installed with an older lib pack gets the current one; the cross compiler and its units stay
+function TInstallThread.refreshLinuxCrossLibs(const tag, libURL, libSHA, libDir: string): Boolean;
+begin
+  var marker := IncludeTrailingPathDelimiter(libDir)+LIBPACK_MARKER;
+  if FileExists(marker) then begin
+    var lines := autofree TStringList.Create;
+    lines.LoadFromFile(marker);
+    if Trim(lines.Text) = libURL then exit(true);
+  end;
+  Log('cross libs '+tag+' predate '+ExtractFileName(libURL)+', replacing them');
+  RemoveDir(libDir);
+  ForceDirectories(libDir);
+  result := unpackLinuxCrossLibs(tag, libURL, libSHA, libDir);
 end;
 
 function TInstallThread.StepBuildFpcCrossLinux64: Boolean;
@@ -3267,6 +3292,7 @@ begin
                     DirectorySeparator + 'bin';
       var LibDir := TargetPrefix + 'cross' + DirectorySeparator + 'x86_64-linux' +
                     DirectorySeparator + 'lib';
+      if not refreshLinuxCrossLibs('x86_64-linux', CROSS_LINUX64_LIB_URL, CROSS_LINUX64_LIB_SHA, LibDir) then exit;
       PatchFpcCfgCrossSection('linux', 'x86_64', BinDir, LibDir, 'x86_64-linux-gnu-', True);
     end
     else
@@ -3289,6 +3315,7 @@ begin
                     DirectorySeparator + 'bin';
       var LibDir := TargetPrefix + 'cross' + DirectorySeparator + 'i386-linux' +
                     DirectorySeparator + 'lib';
+      if not refreshLinuxCrossLibs('i386-linux', CROSS_LINUX32_LIB_URL, CROSS_LINUX32_LIB_SHA, LibDir) then exit;
       PatchFpcCfgCrossSection('linux', 'i386', BinDir, LibDir, 'i386-linux-gnu-', True);
     end
     else
