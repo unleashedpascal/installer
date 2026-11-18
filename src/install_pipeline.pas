@@ -158,6 +158,8 @@ type
     function StepRemoveCrossLinux64: Boolean;
     function StepBuildFpcCrossLinux32: Boolean;
     function StepRemoveCrossLinux32: Boolean;
+    function buildPpcross386: Boolean;
+    procedure removePpcross386;
     function StepBuildFpcCrossWin64FromLinux: Boolean;
     function StepRemoveCrossWin64FromLinux: Boolean;
     function StepBuildFpcCrossWin32FromLinux: Boolean;
@@ -1432,17 +1434,13 @@ function TInstallThread.StepBuildFpcCrossLinux32: Boolean;
 begin
   Result := False;
   // i386-linux requires the unleashed ppcross386 (built by the i386-win32
-  // cross step). ppcross386 has the i386 codegen and soft-x80 path baked in;
+  // cross step, or by buildPpcross386 when that step is not installed).
+  // ppcross386 has the i386 codegen and soft-x80 path baked in;
   // it supports both -Twin32 and -Tlinux at runtime, so the same binary
   // serves both targets. Without it, we cannot produce a writer for the
   // cross-RTL whose .ppu the same binary will later read.
   var Pp := HostFpcBinDir + 'ppcross386' + ExeExt;
-  if not FileExists(Pp) then begin
-    FErrorMsg := 'i386-linux cross requires the i386-win32 cross compiler. ' +
-      'Tick "i386-win32" in the cross list as well, then run install.';
-    Log('  ' + FErrorMsg);
-    Exit;
-  end;
+  if (not FileExists(Pp)) and (not buildPpcross386) then exit;
 
   var CrossDir := IncludeTrailingPathDelimiter(FCfg.TargetDir) +
                   'cross' + DirectorySeparator + 'i386-linux';
@@ -1506,6 +1504,46 @@ begin
     RemoveDir(CrossDir);
   end;
   PatchFpcCfgCrossSection('linux', 'i386', '', '', '', False);
+  if not FCfg.CrossWin32 then removePpcross386;
+end;
+
+// i386-win32 and i386-linux share ppcross386; without the i386-win32 step installed, i386-linux builds just the compiler,
+// with the arguments that step runs it with. OS_TARGET=win32 only sets the default target, the i386-linux RTL is built with -Tlinux
+function TInstallThread.buildPpcross386: Boolean;
+begin
+  result := false;
+  var ppHost := HostFpcBinDir+'ppcx64'+ExeExt;
+  var fpcInstallPrefix := IncludeTrailingPathDelimiter(FCfg.TargetDir)+'fpc';
+  Log('  building ppcross386, the i386 cross compiler');
+{$ifdef WINDOWS}
+  // the compiler half of the i386-win32 `make crossinstall`
+  var args: TStringArray := ['OS_TARGET=win32', 'CPU_TARGET=i386', 'INSTALL_PREFIX='+fpcInstallPrefix, 'PP='+ppHost, 'OPT=-dFPC_SOFT_FPUX80', 'CROSSINSTALL=1'];
+  if not RunMake(['compiler_cycle', 'RELEASE=1']+args, 'compiler_cycle (ppcross386, ~3 min)') then exit;
+  if not RunMake(['compiler_install']+args, 'compiler_install (ppcross386)') then exit;
+  StepM3Cleanup;
+{$endif}
+{$ifdef LINUX}
+  // stages 1-2 of StepBuildFpcCrossWin32FromLinux
+  var args: TStringArray := ['OS_TARGET=win32', 'CPU_TARGET=i386', 'OS_SOURCE='+HostTargetOs, 'CPU_SOURCE=x86_64', 'FPCDIR='+MakeWorkDir, 'FPCFPMAKE='+ppHost, 'INSTALL_PREFIX='+fpcInstallPrefix, 'CROSSOPT=-Xi', 'CROSSINSTALL=1'];
+  if not RunMake(['compiler_cycle', 'FPC='+ppHost]+args, 'compiler_cycle (ppcross386, ~3 min)') then exit;
+  if not RunMake(['compiler_install', 'FPC='+ppHost]+args, 'compiler_install (ppcross386)') then exit;
+  EnsureCompilerSymlinks;
+{$endif}
+  if not FileExists(HostFpcBinDir+'ppcross386'+ExeExt) then begin
+    FErrorMsg := 'compiler_install did not place '+HostFpcBinDir+'ppcross386'+ExeExt;
+    Log('  '+FErrorMsg);
+    exit;
+  end;
+  result := true;
+end;
+
+// called by the removal of i386-win32 or i386-linux once the other one is not wanted either
+procedure TInstallThread.removePpcross386;
+begin
+  var ppcross := HostFpcBinDir+'ppcross386'+ExeExt;
+  if not FileExists(ppcross) then exit;
+  Log('  '+ppcross);
+  DeleteFile(ppcross);
 end;
 
 // Cross win64 from linux host using FPC's internal linker (-Xi); no
@@ -1657,15 +1695,11 @@ end;
 function TInstallThread.StepRemoveCrossWin32FromLinux: Boolean;
 begin
   Result := True;  // best-effort
-  var PpcrossBin := HostFpcBinDir + 'ppcross386' + ExeExt;
   var UnitsDir   := HostFpcUnitsDir + 'i386-win32';
 
   Log('Removing cross compiler i386-win32');
   Progress(-1, 'Removing i386-win32');
-  if FileExists(PpcrossBin) then begin
-    Log('  ' + PpcrossBin);
-    DeleteFile(PpcrossBin);
-  end;
+  if not FCfg.CrossLinux32 then removePpcross386;
   if DirectoryExists(UnitsDir) then begin
     Log('  ' + UnitsDir);
     RemoveDir(UnitsDir);
@@ -1673,7 +1707,8 @@ begin
 end;
 
 // Build the i386-linux cross compiler from a x86_64-linux host. Requires
-// ppcross386 (produced by StepBuildFpcCrossWin32FromLinux) since the
+// ppcross386 (produced by StepBuildFpcCrossWin32FromLinux, or by
+// buildPpcross386 when that step is not installed) since the
 // same i386 codegen binary serves both -Twin32 and -Tlinux at runtime.
 // Skips compiler_cycle: rebuilding ppcross386 for OS_TARGET=linux would
 // re-stage host RTL with an i386 compiler against x86_64-linux source
@@ -1685,12 +1720,7 @@ function TInstallThread.StepBuildFpcCrossLinux32FromLinux: Boolean;
 begin
   Result := False;
   var Pp := HostFpcBinDir + 'ppcross386' + ExeExt;
-  if not FileExists(Pp) then begin
-    FErrorMsg := 'i386-linux cross requires the i386-win32 cross compiler. ' +
-      'Tick "i386-win32" in the cross list as well, then run install again.';
-    Log('  ' + FErrorMsg);
-    Exit;
-  end;
+  if (not FileExists(Pp)) and (not buildPpcross386) then exit;
 
   var PpHost           := HostFpcBinDir + 'ppcx64' + ExeExt;
   var FpcInstallPrefix := IncludeTrailingPathDelimiter(FCfg.TargetDir) + 'fpc';
@@ -1729,8 +1759,7 @@ begin
     Log('  ' + UnitsDir);
     RemoveDir(UnitsDir);
   end;
-  // We deliberately don't remove ppcross386 here -- it may still be in
-  // use by the i386-win32 target on this host.
+  if not FCfg.CrossWin32 then removePpcross386;
 end;
 
 function TInstallThread.LazarusDir: string;
@@ -2990,16 +3019,12 @@ function TInstallThread.StepRemoveCrossWin32: Boolean;
 begin
   Result := True;  // best-effort
   var FpcInstall := IncludeTrailingPathDelimiter(FCfg.TargetDir) + 'fpc';
-  var PpcrossBin := HostFpcBinDir + 'ppcross386' + ExeExt;
   var UnitsDir   := IncludeTrailingPathDelimiter(FpcInstall) +
                     'units' + DirectorySeparator + 'i386-win32';
 
   Log('Removing cross compiler i386-win32');
   Progress(-1, 'Removing i386-win32');
-  if FileExists(PpcrossBin) then begin
-    Log('  ' + PpcrossBin);
-    DeleteFile(PpcrossBin);
-  end;
+  if not FCfg.CrossLinux32 then removePpcross386;
   if DirectoryExists(UnitsDir) then begin
     Log('  ' + UnitsDir);
     RemoveDir(UnitsDir);
@@ -3076,7 +3101,8 @@ begin
     // pipeline so detection lines up with what the install steps create.
     var hasFpcExe       := FileExists(HostFpcDriver);
     var hasLazExe       := FileExists(IncludeTrailingPathDelimiter(LazarusDir) + 'lazarus' + ExeExt);
-    var hasCrossW32     := FileExists(HostFpcBinDir + 'ppcross386' + ExeExt);
+    // ppcross386 alone does not mean i386-win32: an i386-linux cross installed by itself brings it too
+    var hasCrossW32     := DirectoryExists(HostFpcUnitsDir + 'i386-win32');
     var hasCrossWasm    := FileExists(HostFpcBinDir + 'ppcrosswasm32' + ExeExt);
     // Linux cross compilers don't get a dedicated ppcross<arch> binary
     // (ppcx64 / ppcross386 are multi-OS), so detect by RTL units presence.
@@ -3098,19 +3124,6 @@ begin
                'linux64=%s linux32=%s win64=%s bootstrap=%s', [BoolToStr(hasFpcExe, True), BoolToStr(hasLazExe, True),
        BoolToStr(hasCrossW32, True), BoolToStr(hasCrossWasm, True), BoolToStr(hasCrossLinux64, True), BoolToStr(hasCrossLinux32, True),
        BoolToStr(hasCrossWin64, True), BoolToStr(hasBootstrap, True)]));
-
-    // i386-linux needs ppcross386 (the same i386 codegen binary serves
-    // both -Twin32 and -Tlinux at runtime; it's produced by the
-    // i386-win32 cross step). If the user requested linux32 without
-    // already having ppcross386 AND without ticking i386-win32 in the
-    // same run, fail upfront with a clear message rather than running
-    // 10 minutes of native build only to crash at stage 1/5 of linux32.
-    if FCfg.CrossLinux32 and (not hasCrossW32) and (not FCfg.CrossWin32) then begin
-      FErrorMsg := 'i386-linux cross requires the i386-win32 cross compiler. ' +
-        'Tick "i386-win32" in the cross list and run install again.';
-      Log('ERROR: ' + FErrorMsg);
-      Exit;
-    end;
 
     // compare manifest SHAs against what the UI selected; if they
     // differ, force a refresh of just that component.
@@ -3299,7 +3312,7 @@ begin
       Log('skipping cross compiler x86_64-linux (not selected)');
 {$endif}
 
-    // cross i386-linux: requires ppcross386 from the i386-win32 step
+    // cross i386-linux: runs on ppcross386 from the i386-win32 step, or builds it
     // (same multi-target binary serves both -Twin32 and -Tlinux).
 {$ifdef WINDOWS}
     if FCfg.CrossLinux32 and (not hasCrossLinux32) then begin
@@ -3323,8 +3336,8 @@ begin
 {$endif}
 {$ifdef LINUX}
     // Linux host -> i386-linux: requires ppcross386 (built either here in
-    // the i386-win32 step that just ran, or already present from a prior
-    // run). Internal -Xi for ELF generation; no external i386 binutils
+    // the i386-win32 step that just ran, already present from a prior
+    // run, or built by the step itself). Internal -Xi for ELF generation; no external i386 binutils
     // bundle needed.
     if FCfg.CrossLinux32 and (not hasCrossLinux32) then begin
       SetStage(isFpcCrossLinux32);
@@ -3402,7 +3415,7 @@ begin
     Manifest.CrossWin64   := DirectoryExists(HostFpcUnitsDir + 'x86_64-win64');
     Manifest.CrossLinux64 := FCfg.CrossLinux64;
 {$endif}
-    Manifest.CrossWin32   := FileExists(HostFpcBinDir + 'ppcross386' + ExeExt);
+    Manifest.CrossWin32   := DirectoryExists(HostFpcUnitsDir + 'i386-win32');
     Manifest.CrossLinux32 := DirectoryExists(HostFpcUnitsDir + 'i386-linux');
     Manifest.CrossWasm    := FileExists(HostFpcBinDir + 'ppcrosswasm32' + ExeExt);
     Manifest.InstallCPUView := FCfg.InstallCPUView;

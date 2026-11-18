@@ -1173,10 +1173,8 @@ begin
   ApplyLazarusEnabled;
 end;
 
-// i386-linux build needs ppcross386 (i386-win32 cross); auto-tick the prereq
 procedure TMainForm.OnAddonOrCrossChange(Sender: TObject);
 begin
-  if (Sender = CheckBoxCrossLinux32) and CheckBoxCrossLinux32.Checked then CheckBoxCrossWin32.Checked := True;
   RefreshTargetState;
 end;
 
