@@ -650,11 +650,11 @@ begin
 {$endif}
 end;
 
-// Shell wrapper installed AS bin/fpc that sets PPC_CONFIG_PATH then
-// exec's the original launcher (moved to bin/fpc.real). FPC reads
-// ~/.fpc.cfg first if present, so without this a stale user cfg
-// shadows our portable one for Lazarus and shell invocations.
-// Idempotent (shebang check). No-op on Windows.
+// Shell wrapper installed AS bin/fpc that exec's the original launcher
+// (moved to bin/fpc.real) with `-n @<our fpc.cfg>`. FPC reads ~/.fpc.cfg
+// before anything PPC_CONFIG_PATH names, so only -n keeps a user cfg from
+// shadowing our portable one for Lazarus and shell invocations.
+// A wrapper already in place is rewritten. No-op on Windows.
 procedure TInstallThread.InstallFpcWrapper;
 begin
 {$ifdef LINUX}
@@ -662,31 +662,37 @@ begin
   var FpcRealBin := HostFpcUtilDir + 'fpc.real';
   if not FileExists(FpcBin) then Exit;
   // already wrapped? detect by reading the first line for the shebang.
+  var wrapped := false;
   try
     var probe := autofree TStringList.Create;
     probe.LoadFromFile(FpcBin);
-    if (probe.Count > 0) and (Pos('#!/bin/sh', probe[0]) = 1) then begin
-      Log('  fpc wrapper already in place, skipping');
-      Exit;
-    end;
+    wrapped := (probe.Count > 0) and (Pos('#!/bin/sh', probe[0]) = 1);
   except
     // unreadable file -- treat as binary and proceed with wrap
   end;
-  // back up the real launcher
-  if FileExists(FpcRealBin) then SysUtils.DeleteFile(FpcRealBin);
-  if not RenameFile(FpcBin, FpcRealBin) then begin
-    Log('  WARN: could not rename fpc -> fpc.real (skipping wrapper)');
-    Exit;
+  if wrapped then begin
+    // the launcher was moved aside by an earlier run, only the script changes
+    if not FileExists(FpcRealBin) then Exit;
+  end else begin
+    // back up the real launcher
+    if FileExists(FpcRealBin) then SysUtils.DeleteFile(FpcRealBin);
+    if not RenameFile(FpcBin, FpcRealBin) then begin
+      Log('  WARN: could not rename fpc -> fpc.real (skipping wrapper)');
+      Exit;
+    end;
   end;
   // write wrapper. SCRIPT_DIR via $(dirname $(readlink -f $0)) so the
   // wrapper still finds fpc.real if the install dir gets moved.
   var Wrapper :=
     '#!/bin/sh'#10 +
     '# unleashed-pascal launcher wrapper.'#10 +
-    '# Forces PPC_CONFIG_PATH so the portable fpc.cfg next to ppcx64'#10 +
-    '# wins over any stale ~/.fpc.cfg from prior FPC experiments.'#10 +
+    '# Names the portable fpc.cfg next to ppcx64 outright: -n drops the'#10 +
+    '# config search, where ~/.fpc.cfg outranks PPC_CONFIG_PATH.'#10 +
     'SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd -P)"'#10 +
     'export PPC_CONFIG_PATH="$SCRIPT_DIR/../lib/fpc/' + HostFpcVersion + '"'#10 +
+    'if [ -f "$PPC_CONFIG_PATH/fpc.cfg" ]; then'#10 +
+    '  exec "$SCRIPT_DIR/fpc.real" -n @"$PPC_CONFIG_PATH/fpc.cfg" "$@"'#10 +
+    'fi'#10 +
     'exec "$SCRIPT_DIR/fpc.real" "$@"'#10;
   var Sl := autofree TStringList.Create;
   Sl.Text := Wrapper;
@@ -695,7 +701,7 @@ begin
   except
     Log('  WARN: could not write fpc wrapper at ' + FpcBin);
     // try to restore the original
-    RenameFile(FpcRealBin, FpcBin);
+    if not wrapped then RenameFile(FpcRealBin, FpcBin);
     Exit;
   end;
   RunSilent('/bin/chmod', ['+x', FpcBin]);
@@ -957,6 +963,8 @@ begin
   var makeArgs: TStringArray := [];
   for var i := Low(Args) to High(Args) do makeArgs := makeArgs+[Args[i]];
   if fFpcRev <> '' then makeArgs := makeArgs+['REVSTR='+fFpcRev];
+  // the native build compiles fpmkunit and every fpmake.pp without -n, so a ~/.fpc.cfg leaks into them
+  makeArgs := makeArgs+['FPMAKE_SKIP_CONFIG=-n'];
   var ArgList := '';
   for var i := Low(makeArgs) to High(makeArgs) do begin
     if ArgList <> '' then ArgList := ArgList + ' ';
@@ -1035,7 +1043,7 @@ begin
   // No-op on Windows (flat bin\<target>\ layout already has ppcXXX).
   EnsureCompilerSymlinks;
   // Wrap bin/fpc so that ANY invocation (shell, Lazarus IDE,
-  // makefiles) gets PPC_CONFIG_PATH set automatically. Defends
+  // makefiles) gets our fpc.cfg passed explicitly. Defends
   // against stale ~/.fpc.cfg without needing user action. No-op on
   // Windows, where fpc.exe is the real driver binary; our own child
   // processes get PPC_CONFIG_PATH from proc_util instead.
@@ -2887,14 +2895,12 @@ begin
   Log('  PPC_CONFIG_PATH = ' + ConfigDir);
 {$ifdef LINUX}
   c_setenv('PPC_CONFIG_PATH', PChar(ConfigDir), 1);
-  // Warn if the user has ~/.fpc.cfg; our pipeline is now safe (overridden
-  // via env), but `fpc` invoked manually from a shell after install will
-  // still hit it unless the user removes/renames it.
+  // the env pin loses to ~/.fpc.cfg on Unix; an install whose FPC is kept gets the current wrapper here
+  InstallFpcWrapper;
   var DotFpcCfg := IncludeTrailingPathDelimiter(GetEnvironmentVariable('HOME')) + '.fpc.cfg';
   if FileExists(DotFpcCfg) then begin
     Log('  NOTE: ~/.fpc.cfg detected at ' + DotFpcCfg);
-    Log('  NOTE: it shadows portable fpc.cfg for plain `fpc` shell use.');
-    Log('  NOTE: rename or delete it if you want this install to be the default.');
+    Log('  NOTE: the `fpc` of this install ignores it, ppcx64 called directly still reads it.');
   end;
 {$endif}
 {$ifdef WINDOWS}
