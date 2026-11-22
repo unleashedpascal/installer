@@ -114,6 +114,8 @@ type
     FLogMsg: string;
     FProgressMsg: string;
     FProgressPct: Integer;
+    // highest overall percent sent so far
+    fProgressPeak: Integer;
     // optional installer.log writer; nil when save-log is off. owned
     // and freed inside Execute so lifetime is exactly the pipeline run.
     FLogStream: TFileStream;
@@ -491,6 +493,8 @@ begin
   begin
     if Percent > 100 then Percent := 100;
     FProgressPct := rangeStart + Round((rangeEnd - rangeStart) * Percent / 100);
+    // fpmake and lazbuild count 0..100 once per run and a stage holds several runs; stages also repeat
+    if FProgressPct < fProgressPeak then FProgressPct := fProgressPeak else fProgressPeak := FProgressPct;
   end;
   FProgressMsg := STAGE_NAME[FStage] + ': ' + status;
   Synchronize(@SyncProgress);
